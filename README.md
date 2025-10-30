@@ -14,3 +14,5 @@ Prototipo del proyecto de Servicios Cognitivos en Cloud.
 - Transcripción de Voz (Whisper)
 - Base de Datos en Google Sheets
 - Predicción de No-Show (ML)
+
+#

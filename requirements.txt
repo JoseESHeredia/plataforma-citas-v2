@@ -7,11 +7,12 @@ faster-whisper
 # --- Sprint 2 ---
 gspread
 oauth2client
-spacy
-es-core-news-sm # <-- AÑADIDO (soluciona Error 2)
+spacy==3.1.0
+es-core-news-sm==3.1.0
 
 # --- Sprint 3 ---
 scikit-learn
 joblib
 
 # (Líneas conflictivas eliminadas)
+#
