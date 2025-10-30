@@ -1,0 +1,21 @@
+# --- Sprint 1 ---
+gradio
+pandas
+python-dotenv
+faster-whisper
+
+# --- Sprint 2 ---
+gspread
+oauth2client
+spacy==3.1.0
+es-core-news-sm==3.1.0 
+
+# --- Sprint 3 ---
+scikit-learn
+joblib
+
+
+#comandos
+#.venv\Scripts\activate
+#pip install -r requirements.txt
+#python app.py
