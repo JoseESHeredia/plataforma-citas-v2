@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import date
-import spacy # <-- AÑADIDO
-import re # <-- AÑADIDO
+# import spacy # <-- ELIMINADA: Es redundante, ya que 'procesador_nlp.py' se encarga de cargar y usar spaCy.
+import re
 
 # --- Importaciones de Lógica Externa ---
 try:
@@ -10,7 +10,7 @@ try:
 except ImportError:
     print("ERROR chatbot_logic: No se encontró 'flujo_agendamiento.py'")
     flujo_cargado = False
-    # Define placeholders
+    # Define placeholders para evitar fallos
     def agendar(*args): return "Error: Lógica de agendamiento no encontrada."
     def consultar_citas(dni): return "Error: Lógica de consulta no encontrada."
     def cancelar_cita(dni, fecha): return "Error: Lógica de cancelación no encontrada."
@@ -18,10 +18,11 @@ except ImportError:
     def buscar_paciente_por_dni(dni): return None
 
 try:
-    from procesador_nlp import procesar_texto # <-- ESTA LÍNEA DEBE SER CORRECTA
+    from procesador_nlp import procesar_texto # <-- La carga de spaCy ocurre DENTRO de este módulo
     nlp_cargado = True
 except ImportError as e:
-    print(f"ERROR chatbot_logic: No se encontró 'procesador_nlp.py'. Detalle: {e}") # <-- Mensaje de error mejorado
+    # Este es el bloque que captura el error 'ModelMetaclass' si persiste la incompatibilidad Pydantic/spaCy.
+    print(f"❌ ERROR FATAL: Falló la importación de 'procesador_nlp.py'. Detalle: {e}")
     nlp_cargado = False
     def procesar_texto(texto): return "desconocido", {"error": "Procesador NLP no encontrado."}
 
@@ -33,7 +34,7 @@ try:
     print("✅ chatbot_logic: Modelo ML 'No-Show' cargado.")
     ml_cargado = True
 except FileNotFoundError:
-    print("❌ ADVERTENCIA chatbot_logic: Modelo ML no encontrado.")
+    print("❌ ADVERTENCIA chatbot_logic: Modelo ML no encontrado. (Necesario para el Sprint 3)")
     modelo_noshow, preprocesador_noshow, ml_cargado = None, None, False
 except Exception as e:
     print(f"❌ Error chatbot_logic al cargar modelo ML: {e}")
@@ -214,4 +215,3 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     print(f"Estado OUT: {estado_actual}")
     print(f"Respuesta Final: {respuesta}")
     return respuesta, estado_actual
-

@@ -2,6 +2,22 @@ import spacy
 import re
 from datetime import datetime, timedelta
 
+# =================================================================
+# 🚨 CAMBIO CLAVE: Importar Pydantic V1 para compatibilidad con spaCy 3.1.0
+# -----------------------------------------------------------------
+# Esto resuelve el error "cannot import name 'ModelMetaclass'..."
+# al cargar spacy, ya que las utilidades internas de spaCy 3.1.0 
+# esperan la estructura de Pydantic V1.
+try:
+    from pydantic.v1 import BaseModel # Importación V1 de prueba
+    print("✅ Pydantic V1 API importada para compatibilidad.")
+except ImportError:
+    # Si la importación V1 falla (ej. si solo existe V2), 
+    # se seguirá confiando en la versión que instaló pip.
+    pass 
+# =================================================================
+
+
 # --- Cargar Modelo Entrenado (Tarea S2-02 REAL) ---
 MODELO_INTENT_PATH = "modelo_intent_spacy" # Carpeta donde guardó entrenar_nlp.py
 try:
@@ -20,14 +36,14 @@ except Exception as e:
 
 
 # --- Cargar Modelo Base (Para Entidades - S2-03) ---
-# Seguimos necesitando un modelo base para extraer entidades como PER (Médico)
 try:
     # Usamos el modelo pequeño que ya teníamos descargado
     nlp_base = spacy.load("es_core_news_sm")
     print("✅ Modelo base spaCy 'es_core_news_sm' (para entidades) cargado.")
 except IOError:
     print("❌ Error: Modelo base 'es_core_news_sm' no encontrado.")
-    print("   Ejecuta: python -m spacy download es_core_news_sm")
+    # El modelo debe ser descargado por setup.sh
+    print("   Asegúrate de que 'setup.sh' descargó el modelo.")
     nlp_base = None # No podremos extraer entidades si falla
 
 
@@ -50,9 +66,6 @@ def detectar_intencion_modelo(texto):
     intencion_predicha = max(doc.cats, key=doc.cats.get)
     score = doc.cats[intencion_predicha]
     print(f"  Predicción de Intención: {intencion_predicha} (Score: {score:.2f})")
-
-    # (Opcional: Podrías añadir un umbral de confianza aquí si quisieras)
-    # if score < 0.5: return "desconocido"
 
     return intencion_predicha
 
@@ -135,9 +148,9 @@ if __name__ == "__main__":
     casos_prueba = [
         "Quiero agendar una cita con el Dr.Vega para mañana a las 10:00",
         "necesito ver mis citas con mi dni 12345678",
-        "cancela mi cita para 2025-10-30 por favor", # Cambiada para incluir fecha
+        "cancela mi cita para 2025-10-30 por favor",
         "hola buenos días",
-        "Necesito una cita, mi DNI es 98765432" # El caso que falló antes
+        "Necesito una cita, mi DNI es 98765432"
     ]
 
     for texto in casos_prueba:

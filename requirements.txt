@@ -10,7 +10,7 @@ oauth2client
 spacy==3.1.0
 
 # 🚩 CORRECCIÓN CLAVE: Fija Pydantic a una versión V1
-# La versión pydantic==1.8.2 es compatible con spacy 3.1 y resuelve el error 'ModelMetaclass'.
+# La versión pydantic es compatible con spacy 3.1 y resuelve el error 'ModelMetaclass'.
 pydantic==1.8.2
 
 # Descarga el modelo de lenguaje de spaCy por separado (no es un paquete PyPI)
