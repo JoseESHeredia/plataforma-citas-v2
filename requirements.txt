@@ -7,15 +7,8 @@ faster-whisper
 # --- Sprint 2 ---
 gspread
 oauth2client
-spacy==3.1.0
-
-# 🚩 CORRECCIÓN CLAVE: Fija Pydantic a una versión V1
-# La versión pydantic es compatible con spacy 3.1 y resuelve el error 'ModelMetaclass'.
-pydantic==1.8.2
-
-# Descarga el modelo de lenguaje de spaCy por separado (no es un paquete PyPI)
-# La versión del modelo debe coincidir con la de spaCy (es-core-news-sm==3.1.0)
-# Esto se instala en el Dockerfile o se descarga mediante código en app.py.
+spacy>=3.7.0  # CAMBIO CLAVE: Usar una versión moderna de spaCy
+# pydantic==1.8.2 # ELIMINADA: Dejamos que pip la resuelva
 
 # --- Sprint 3 ---
 scikit-learn
