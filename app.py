@@ -11,16 +11,20 @@ try:
     from flujo_agendamiento import agendar, consultar_citas, cancelar_cita, obtener_medicos, pacientes_sheet, citas_sheet, buscar_paciente_por_dni
     flujo_cargado = True
     print("✅ Módulos CRUD y búsqueda cargados.")
+# --- BLOQUE CORREGIDO DEFINITIVAMENTE ---
 except ImportError as e:
     print(f"❌ ERROR FATAL: No se pudo importar 'flujo_agendamiento.py': {e}")
-    # Define placeholders
+    # Define placeholders en líneas separadas
     flujo_cargado = False
     def agendar(*args): return "Error importación flujo_agendamiento"
     def consultar_citas(dni): return "Error importación flujo_agendamiento"
     def cancelar_cita(dni, fecha): return "Error importación flujo_agendamiento"
     def obtener_medicos(): return ["Error"]
     def buscar_paciente_por_dni(dni): return None
-    pacientes_sheet, citas_sheet = None, None
+    # Asignación en línea separada
+    pacientes_sheet = None
+    citas_sheet = None
+# --- FIN BLOQUE CORREGIDO ---
 
 try:
     # Importar lógica del chatbot (separada)
@@ -30,6 +34,7 @@ try:
 except ImportError as e:
     print(f"❌ ERROR FATAL: No se pudo importar 'chatbot_logic.py': {e}")
     chatbot_cargado = False
+    # Placeholders en líneas separadas
     def responder_chatbot(m, h, s): return f"Error importación chatbot_logic: {e}", {}
     def predecir_noshow(f, h): return None
 
@@ -41,6 +46,7 @@ try:
 except ImportError:
     print("ADVERTENCIA: 'transcriptor.py' no encontrado. Usando placeholder.")
     stt_cargado = False
+    # Placeholder en línea separada
     def transcribir_audio_placeholder(audio): return "[Transcripción no disponible]"
     transcribir_audio = transcribir_audio_placeholder
 
@@ -96,26 +102,11 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
     # --- PESTAÑA 1: CHATBOT ---
     with gr.Tab("Chatbot (NLP)"):
         gr.Markdown("### Conversa para agendar, consultar o cancelar")
-        gr.ChatInterface(
-            fn=responder_chatbot if chatbot_cargado else None,
-            chatbot=gr.Chatbot(height=400, avatar_images=("https://placehold.co/100x100/blue/white?text=User", "https://placehold.co/100x100/green/white?text=Bot")), # Avatares opcionales
-            textbox=gr.Textbox(placeholder="Escribe tu solicitud aquí...", container=False, scale=7),
-            title="Asistente Virtual de Citas",
-            
-            # --- MODIFICADO AQUÍ ---
-            examples=[
-                ["Deseo agendar una cita", {}],
-                ["Ver mis citas", {}],
-                ["Quiero cancelar mi cita", {}]
-            ],
-            retry_btn="Reintentar", # Vuelve a Gradio 4
-            undo_btn="Deshacer",   # Vuelve a Gradio 4
-            clear_btn="Limpiar", # Vuelve a Gradio 4
-            # --- FIN MODIFICACIÓN ---
-
-            additional_inputs=[estado_conversacion],
-            additional_outputs=[estado_conversacion]
-        )
+        gr.ChatInterface(fn=responder_chatbot if chatbot_cargado else None, chatbot=gr.Chatbot(height=400),
+                         textbox=gr.Textbox(placeholder="Escribe tu solicitud aquí...", container=False, scale=7),
+                         title="Asistente Virtual de Citas",
+                         examples=[["Agendar cita Dr.Perez mañana", {}], ["Ver mis citas dni 98765432", {}], ["cancelar cita 98765432 para 2025-10-30", {}]],
+                         additional_inputs=[estado_conversacion], additional_outputs=[estado_conversacion])
 
     # --- PESTAÑA 2: VOZ ---
     with gr.Tab("Voz (STT + Chatbot)"):
@@ -129,11 +120,11 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
     with gr.Tab("Datos (Google Sheets - EN VIVO)"):
         gr.Markdown("### Últimos Registros en Google Sheets")
         gr.Markdown("⚠️ Lee de GSheets (puede tardar).")
-        with gr.Row():
+        with gr.Row(): # Asegurar indentación correcta
             df_pacientes_display = gr.DataFrame(label="Pacientes (Google Sheet)")
             df_citas_display = gr.DataFrame(label="Citas (Google Sheet)")
         btn_actualizar_datos = gr.Button("Actualizar Tablas (desde Google Sheets)")
-        btn_actualizar_datos.click(fn=cargar_datos_gsheets, inputs=None, outputs=[df_pacientes_display, df_citas_display])
+        btn_actualizar_datos.click(fn=cargar_datos_gsheets, inputs=None, outputs=[df_pacientes_display, df_citas_display]) # Corchete cerrado
 
     # --- PESTAÑA 4: TESTEO (CRUD) ---
     with gr.Tab("Testeo (CRUD GSheets)"):

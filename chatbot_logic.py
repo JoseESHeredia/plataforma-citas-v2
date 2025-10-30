@@ -1,6 +1,7 @@
-# chatbot_logic.py
-import pandas as pd # Necesario para predecir_noshow
-from datetime import date # Necesario para predecir_noshow
+import pandas as pd
+from datetime import date
+import spacy # <-- AÑADIDO
+import re # <-- AÑADIDO
 
 # --- Importaciones de Lógica Externa ---
 try:
@@ -17,10 +18,10 @@ except ImportError:
     def buscar_paciente_por_dni(dni): return None
 
 try:
-    from procesador_nlp import procesar_texto
+    from procesador_nlp import procesar_texto # <-- ESTA LÍNEA DEBE SER CORRECTA
     nlp_cargado = True
-except ImportError:
-    print("ERROR chatbot_logic: No se encontró 'procesador_nlp.py'")
+except ImportError as e:
+    print(f"ERROR chatbot_logic: No se encontró 'procesador_nlp.py'. Detalle: {e}") # <-- Mensaje de error mejorado
     nlp_cargado = False
     def procesar_texto(texto): return "desconocido", {"error": "Procesador NLP no encontrado."}
 
@@ -39,7 +40,7 @@ except Exception as e:
     modelo_noshow, preprocesador_noshow, ml_cargado = None, None, False
 
 
-# --- Lógica de Predicción No-Show (Copia de app.py) ---
+# --- Lógica de Predicción No-Show ---
 def predecir_noshow(fecha_str, hora_str):
     """Prepara datos y predice la probabilidad de No-Show."""
     if not ml_cargado: return None
@@ -64,18 +65,15 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     if estado_actual is None: estado_actual = {}
     print(f"Estado IN: {estado_actual}")
 
-    # Campos requeridos
     campos_paciente = ["DNI", "Nombre", "Telefono", "Email"]
     campos_cita = ["Fecha", "Hora", "Medico"]
     todos_campos = campos_paciente + campos_cita
 
-    # 1. Procesar NLP
-    if not nlp_cargado: # Verificar si el módulo NLP se importó correctamente
-        return "Error: El módulo NLP no está disponible.", {}
+    if not nlp_cargado: return "Error: El módulo NLP no está disponible.", {}
     intencion, entidades_raw = procesar_texto(mensaje)
     print(f"Intención RAW: {intencion}, Entidades RAW: {entidades_raw}")
 
-    # Asumir respuesta si NLP no detecta el campo esperado
+    # Asumir respuesta
     campo_preguntado_antes = estado_actual.get("campo_preguntado")
     valor_ingresado_manualmente = None
     if campo_preguntado_antes and campo_preguntado_antes.lower() not in [k.lower() for k in entidades_raw.keys()]:
@@ -97,31 +95,28 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     if 'hora' in entidades_raw: entidades_limpias['Hora'] = entidades_raw.get('hora')
     if 'medico' in entidades_raw: entidades_limpias['Medico'] = entidades_raw.get('medico')
 
-    # Actualizar estado (NLP + valor manual)
+    # Actualizar estado
     estado_actual.update(entidades_limpias)
     if campo_preguntado_antes and valor_ingresado_manualmente:
         estado_actual[campo_preguntado_antes] = valor_ingresado_manualmente
     estado_actual.pop("campo_preguntado", None)
     print(f"Estado después de Update: {estado_actual}")
 
-    # Preserve intent
     if not estado_actual.get("intent") or intencion != "desconocido":
          estado_actual["intent"] = intencion
 
-    # --- Lógica Principal ---
     respuesta = ""
-    accion_completada = False # Para saber si reiniciar estado al final
+    accion_completada = False
 
     if estado_actual.get("intent") == "agendar":
-        if not flujo_cargado: # Verificar si el módulo de flujo se cargó
-            return "Error: La lógica de agendamiento no está disponible.", {}
+        if not flujo_cargado: return "Error: La lógica de agendamiento no está disponible.", {}
 
         # A. Verificar DNI y Paciente
         dni_actual = estado_actual.get("DNI"); paciente_confirmado = estado_actual.get("paciente_confirmado", False)
         id_paciente_existente = estado_actual.get("ID_Paciente"); esperando_respuesta_sino = estado_actual.get("esperando_respuesta_sino", False)
 
         if dni_actual and not paciente_confirmado and not id_paciente_existente and not esperando_respuesta_sino:
-            paciente_encontrado = buscar_paciente_por_dni(dni_actual) # Llama a la función importada
+            paciente_encontrado = buscar_paciente_por_dni(dni_actual)
             if paciente_encontrado:
                 estado_actual["paciente_encontrado"] = paciente_encontrado; estado_actual["esperando_respuesta_sino"] = True
                 respuesta = f"Encontré a {paciente_encontrado['Nombre']} con DNI {dni_actual}. ¿Eres tú? (Sí/No)"
@@ -147,7 +142,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 if not estado_actual.get(campo): campo_faltante = campo; break
 
             if campo_faltante:
-                estado_actual["campo_preguntado"] = campo_faltante # Guardar qué preguntamos
+                estado_actual["campo_preguntado"] = campo_faltante
                 if campo_faltante == "DNI": respuesta = "¿Cuál es tu número de DNI?"
                 elif campo_faltante == "Nombre": respuesta = "¿Cuál es tu nombre completo?"
                 elif campo_faltante == "Telefono": respuesta = "¿Cuál es tu número de teléfono?"
@@ -155,7 +150,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 elif campo_faltante == "Fecha": respuesta = "¿Para qué fecha? (AAAA-MM-DD)"
                 elif campo_faltante == "Hora": respuesta = "¿A qué hora? (HH:MM)"
                 elif campo_faltante == "Medico":
-                    if flujo_cargado: medicos = obtener_medicos() # Llama a la función importada
+                    if flujo_cargado: medicos = obtener_medicos()
                     else: medicos = ["Error"]
                     respuesta = f"¿Con qué médico? ({', '.join(medicos)})"
                 else: respuesta = f"Necesito tu {campo_faltante}."
@@ -170,12 +165,12 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 else:
                     respuesta_usuario = mensaje.lower()
                     if "sí" in respuesta_usuario or "si" in respuesta_usuario:
-                        if flujo_cargado: # Verificar si se puede agendar
+                        if flujo_cargado:
                             resultado = agendar(nombre=estado_actual.get('Nombre'), dni=estado_actual.get('DNI'), telefono=estado_actual.get('Telefono'), email=estado_actual.get('Email'),
                                                 fecha=estado_actual.get('Fecha'), hora=estado_actual.get('Hora'), medico=estado_actual.get('Medico'))
                             respuesta = resultado
-                            if resultado and "¡Éxito!" in resultado: # Añadir predicción
-                                prob_noshow = predecir_noshow(estado_actual.get('Fecha'), estado_actual.get('Hora')) # Llama a la función local
+                            if resultado and "¡Éxito!" in resultado:
+                                prob_noshow = predecir_noshow(estado_actual.get('Fecha'), estado_actual.get('Hora'))
                                 if prob_noshow is not None:
                                     if prob_noshow > 0.6: respuesta += f"\n⚠️ **Advertencia:** Riesgo de ausencia: {prob_noshow:.0%}"
                                     else: respuesta += f"\n(Riesgo bajo: {prob_noshow:.0%})"
@@ -191,7 +186,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         dni = estado_actual.get("DNI") or entidades_limpias.get("DNI")
         if not dni: respuesta = "Necesito tu DNI para consultar."
         else:
-            res_crud = consultar_citas(dni) # Llama a la función importada
+            res_crud = consultar_citas(dni)
             if isinstance(res_crud, list):
                 if not res_crud: respuesta = f"No encontré citas para DNI {dni}."
                 else:
@@ -205,18 +200,18 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         dni = estado_actual.get("DNI") or entidades_limpias.get("DNI")
         fecha = estado_actual.get("Fecha") or entidades_limpias.get("Fecha")
         if not dni or not fecha: respuesta = "Necesito DNI y fecha para cancelar."
-        else: respuesta = cancelar_cita(dni, fecha) # Llama a la función importada
+        else: respuesta = cancelar_cita(dni, fecha)
         accion_completada = True
 
     elif estado_actual.get("intent") == "desconocido":
         respuesta = "No entendí. Intenta: agendar, consultar o cancelar."; accion_completada = True
 
-    elif not respuesta: # Si no hizo match con nada y no se generó respuesta
+    elif not respuesta:
          respuesta = "Hola. ¿Cómo puedo ayudarte?"; accion_completada = True
 
-    # Reiniciar estado si la acción se completó
     if accion_completada: estado_actual = {}
 
     print(f"Estado OUT: {estado_actual}")
     print(f"Respuesta Final: {respuesta}")
     return respuesta, estado_actual
+
