@@ -11,10 +11,9 @@ try:
     from flujo_agendamiento import agendar, consultar_citas, cancelar_cita, obtener_medicos, pacientes_sheet, citas_sheet, buscar_paciente_por_dni
     flujo_cargado = True
     print("✅ Módulos CRUD y búsqueda cargados.")
-# --- BLOQUE CORREGIDO DEFINITIVAMENTE ---
 except ImportError as e:
     print(f"❌ ERROR FATAL: No se pudo importar 'flujo_agendamiento.py': {e}")
-    # Define placeholders en líneas separadas
+    # Define placeholders
     flujo_cargado = False
     def agendar(*args): return "Error importación flujo_agendamiento"
     def consultar_citas(dni): return "Error importación flujo_agendamiento"
@@ -24,7 +23,6 @@ except ImportError as e:
     # Asignación en línea separada
     pacientes_sheet = None
     citas_sheet = None
-# --- FIN BLOQUE CORREGIDO ---
 
 try:
     # Importar lógica del chatbot (separada)
@@ -32,6 +30,7 @@ try:
     chatbot_cargado = True
     print("✅ Módulo 'chatbot_logic.py' cargado.")
 except ImportError as e:
+    # Este es el bloque que se ejecuta debido al error de Pydantic/spaCy
     print(f"❌ ERROR FATAL: No se pudo importar 'chatbot_logic.py': {e}")
     chatbot_cargado = False
     # Placeholders en líneas separadas
@@ -94,6 +93,18 @@ def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
     else: resp_bot, n_estado = "Error: Chatbot no cargado.", estado_actual or {}
     return texto_transcrito, resp_bot, n_estado
 
+
+# ====================================================================
+# 🚨 FUNCIÓN DE FALLBACK PARA EVITAR GRADIO VALIDATION ERROR
+# ====================================================================
+def fallback_chatbot_fn(mensaje, historial_chat, estado_actual):
+    """Función de emergencia que siempre devuelve una cadena de texto válida."""
+    print("❌ Activando Fallback Chatbot: La lógica principal no cargó.")
+    error_msg = "Error: La función NLP/Chatbot no pudo cargarse debido a un conflicto de dependencias. Revisa los logs de Hugging Face."
+    return error_msg, {}
+# ====================================================================
+
+
 # --- Construcción de la Interfaz ---
 with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
     estado_conversacion = gr.State({}) # Estado compartido
@@ -102,7 +113,11 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
     # --- PESTAÑA 1: CHATBOT ---
     with gr.Tab("Chatbot (NLP)"):
         gr.Markdown("### Conversa para agendar, consultar o cancelar")
-        gr.ChatInterface(fn=responder_chatbot if chatbot_cargado else None, chatbot=gr.Chatbot(height=400),
+        
+        # 🚨 CÓDIGO MODIFICADO: Usa la función de fallback si el chatbot principal falló al cargar
+        funcion_chatbot_segura = responder_chatbot if chatbot_cargado else fallback_chatbot_fn
+        
+        gr.ChatInterface(fn=funcion_chatbot_segura, chatbot=gr.Chatbot(height=400),
                          textbox=gr.Textbox(placeholder="Escribe tu solicitud aquí...", container=False, scale=7),
                          title="Asistente Virtual de Citas",
                          examples=[["Agendar cita Dr.Perez mañana", {}], ["Ver mis citas dni 98765432", {}], ["cancelar cita 98765432 para 2025-10-30", {}]],
@@ -147,7 +162,8 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
 if __name__ == "__main__":
     print("Intentando lanzar la aplicación Gradio...")
     try:
-        demo.queue().launch(server_name="127.0.0.1", server_port=7860)
+        # Nota: Hugging Face ignora estos parámetros, pero son necesarios para el testeo local
+        demo.queue().launch(server_name="0.0.0.0", server_port=7860) 
         print("¡Aplicación lanzada! Accede en http://127.0.0.1:7860")
     except Exception as e:
         print(f"❌ ERROR al lanzar Gradio: {e}")
