@@ -2,13 +2,6 @@ import spacy
 import re
 from datetime import datetime, timedelta
 
-# =================================================================
-# 🚨 IMPORTANTE: Se elimina el bloque de compatibilidad Pydantic V1.
-# Ahora confiamos en que spaCy >= 3.7 (del requirements.txt)
-# maneje Pydantic V2, resolviendo el error "ModelMetaclass".
-# =================================================================
-
-
 # --- Cargar Modelo Entrenado (Tarea S2-02 REAL) ---
 MODELO_INTENT_PATH = "modelo_intent_spacy" # Carpeta donde guardó entrenar_nlp.py
 try:
@@ -81,7 +74,7 @@ def extraer_entidades(texto):
                 entidades["medico"] = ent.text 
                 break
 
-    # 2. Extraer DNI (Regex)
+    # 2. Extracer DNI (Regex)
     match_dni = re.search(r'\b(\d{8})\b', texto)
     if match_dni:
         entidades["dni"] = match_dni.group(1)
@@ -126,24 +119,3 @@ def procesar_texto(texto):
     entidades = extraer_entidades(texto)
 
     return intencion, entidades
-
-
-# ===== TEST AUTOMÁTICO =====
-if __name__ == "__main__":
-    print("\n📌 Iniciando test de NLP...\n")
-
-    casos_prueba = [
-        "Quiero agendar una cita con el Dr.Vega para mañana a las 10:00",
-        "necesito ver mis citas con mi dni 12345678",
-        "cancela mi cita para 2025-10-30 por favor",
-        "hola buenos días",
-        "Necesito una cita, mi DNI es 98765432"
-    ]
-
-    for texto in casos_prueba:
-        print(f"--- Procesando: '{texto}' ---")
-        intencion, entidades = procesar_texto(texto)
-        print(f"  > Intención (Modelo): {intencion}")
-        print(f"  > Entidades: {entidades}\n")
-
-    print("\n✅ Test de NLP completado.")
