@@ -2,7 +2,25 @@ import pandas as pd
 from datetime import date
 import spacy
 import re
-import numpy as np # Necesario para la función predecir_noshow
+import numpy as np 
+
+# =========================================================
+# 🚨 CORRECCIÓN CLAVE: MOVER CONSTANTES FUERA DE LAS FUNCIONES
+# =========================================================
+
+# --- Definiciones de Flujo (Constantes) ---
+CAMPOS_AGENDAR = ["DNI", "Nombre", "Telefono", "Email", "Medico", "Fecha", "Hora"]
+RESPUESTAS_PREGUNTAS = {
+    "DNI": "¿Cuál es tu número de DNI?",
+    "Nombre": "¿Cuál es tu nombre completo?",
+    "Telefono": "¿Me proporcionas un número de teléfono?",
+    "Email": "¿Me das tu email?",
+    "Medico": "¿Con qué médico quieres agendar? Tenemos al Dr. Vega, Dra. Perez, o Dr. Morales.",
+    "Fecha": "¿Qué fecha quieres la cita? (Formato AAAA-MM-DD)",
+    "Hora": "¿A qué hora? (Formato HH:MM)"
+}
+# =========================================================
+
 
 # --- Importaciones de Lógica Externa ---
 try:
@@ -26,10 +44,9 @@ except ImportError as e:
     nlp_cargado = False
     def procesar_texto(texto): return "desconocido", {"error": "Procesador NLP no encontrado."}
 
-# --- Importaciones de Modelo ML (CORRECCIÓN DE NOMBRE DE ARCHIVO) ---
+# --- Importaciones de Modelo ML ---
 try:
     import joblib
-    # 🚨 CORRECCIÓN: Buscamos los archivos .joblib que existen en tu directorio
     modelo_noshow = joblib.load("modelo_noshow.joblib") 
     preprocesador_noshow = joblib.load("preprocesador_noshow.joblib")
     print("✅ chatbot_logic: Modelo ML 'No-Show' cargado.")
@@ -56,8 +73,7 @@ def predecir_noshow(fecha_str, hora_str):
         datos_cita = pd.DataFrame([{'Dia_Semana': dia_semana, 'Hora_Bloque': hora_bloque,'Ant_No_Shows': ant_no_shows, 'Distancia_Km': distancia_km}])
         datos_procesados = preprocesador_noshow.transform(datos_cita)
         
-        # El modelo espera un array 2D de features (ajusta según tu modelo real)
-        # Nota: Asegúrate de que preprocesador_noshow esté cargado correctamente
+        # Asumiendo que joblib.load() devuelve un modelo compatible con scikit-learn
         prob = modelo_noshow.predict_proba(datos_procesados)[0][1]
         
         print(f"📈 chatbot_logic: Predicción No-Show ({fecha_str} {hora_str}): {prob:.2f}"); return prob
@@ -72,7 +88,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     respuesta = ""
     accion_completada = False
     
-    # 🚨 CORRECCIÓN DE SEGURIDAD: Aseguramos que el estado inicial sea un diccionario
+    # Aseguramos que el estado inicial sea un diccionario
     if estado_actual is None: estado_actual = {}
     print(f"Estado IN: {estado_actual}")
 
@@ -81,10 +97,8 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     todos_campos = campos_paciente + campos_cita
 
     if not nlp_cargado: 
-        # Si NLP no cargó, devolvemos el error de texto del fallback
         return "Error: El módulo NLP no está disponible.", estado_actual
 
-    # Si el mensaje es un estado de error, lo limpiamos y devolvemos un mensaje de inicio.
     if isinstance(mensaje, str) and mensaje.startswith("Error:"):
          respuesta = "Hubo un error de formato. Por favor, reinicia la conversación."
          return respuesta, {}
@@ -110,12 +124,11 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     entidades_limpias = {k: v for k, v in entidades_raw.items() if v}
     estado_actual.update(entidades_limpias)
     
-    # ... (Se omite el resto de la lógica de flujo conversacional para brevedad, asumiendo que es idéntica)
-
     # 4. Lógica de Flujo (Estado y Respuesta)
     if estado_actual.get("intent") == "agendar":
         if not flujo_cargado: return "Error: La lógica de agendamiento no está disponible.", {}
         
+        # 🚨 LA CORRECCIÓN SE APLICA AQUÍ: CAMPOS_AGENDAR ahora es global
         campos_pendientes = [c for c in CAMPOS_AGENDAR if c not in estado_actual]
         
         if not campos_pendientes:
@@ -199,10 +212,9 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     
     # 5. Devolver Respuesta y Estado
     
-    # 🚨 VALIDACIÓN DE SEGURIDAD (Se mantiene la validación anterior)
+    # VALIDACIÓN DE SEGURIDAD
     if not isinstance(respuesta, str):
         print("⚠️ Alerta: La respuesta final no es una cadena. Forzando a string.")
-        # Esto previene el error de validación de Gradio/Pydantic V2
         respuesta = "Error interno de formato (DEBUG). Por favor, reinicia la conversación."
 
     # El retorno siempre debe ser una tupla (string, dict) para Gradio
