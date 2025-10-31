@@ -69,7 +69,7 @@ def cargar_datos_gsheets():
 def agendar_manual_y_predecir(nombre, dni, telefono, email, fecha_str, hora_str, medico):
     res = agendar(nombre, dni, telefono, email, fecha_str, hora_str, medico)
     if res and "¡Éxito!" in res: prob = predecir_noshow(fecha_str, hora_str);
-    if prob is not None: res += f"\n{'⚠️ Riesgo ausencia:' if prob>0.6 else '(Riesgo bajo:'} {prob:.0%})"
+    if prob is not None: res += f"\n{'⚠️ Riesgo ausencia:' if prob>0.6 else '(Riesgo bajo:'} {prob:.0%}"
     return res
 
 # --- Wrapper para Consultar Citas (Formateo) ---
@@ -95,17 +95,16 @@ def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
 
 
 # ====================================================================
-# 🚨 FUNCIÓN DE FALLBACK PARA EVITAR GRADIO VALIDATION ERROR
+# 🚨 FUNCIÓN DE FALLBACK PARA EVITAR GRADIO VALIDATION ERROR (FINAL)
 # ====================================================================
 def fallback_chatbot_fn(mensaje, historial_chat, estado_actual):
     """
-    Función de emergencia que siempre devuelve una cadena de texto válida. 
-    Asegura que el retorno sea (string, dict) incluso durante la inicialización
-    del caching (donde mensaje es None).
+    Solución final para el error de caching de Gradio/Pydantic V2.
+    Asegura que el retorno sea (string, dict) en CUALQUIER caso de error o inicialización.
     """
     # Si el mensaje es None, Gradio está haciendo caching/inicialización
-    if mensaje is None:
-        # Devolver una cadena vacía para la respuesta del bot.
+    if mensaje is None or mensaje == "":
+        # Devolver una cadena vacía "", que es el tipo de dato que espera Gradio.
         return "", estado_actual or {} 
     
     print("❌ Activando Fallback Chatbot: La lógica principal no cargó.")
