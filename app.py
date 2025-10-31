@@ -26,7 +26,7 @@ except ImportError as e:
 
 try:
     # Importar lógica del chatbot (separada)
-    from chatbot_logic import responder_chatbot, predecir_noshow # También importamos predecir_noshow
+    from chatbot_logic import responder_chatbot, predecir_noshow 
     chatbot_cargado = True
     print("✅ Módulo 'chatbot_logic.py' cargado.")
 except ImportError as e:
@@ -98,11 +98,19 @@ def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
 # 🚨 FUNCIÓN DE FALLBACK PARA EVITAR GRADIO VALIDATION ERROR
 # ====================================================================
 def fallback_chatbot_fn(mensaje, historial_chat, estado_actual):
-    """Función de emergencia que siempre devuelve una cadena de texto válida."""
+    """
+    Función de emergencia que siempre devuelve una cadena de texto válida. 
+    Asegura que el retorno sea (string, dict) incluso durante la inicialización
+    del caching (donde mensaje es None).
+    """
+    # Si el mensaje es None, Gradio está haciendo caching/inicialización
+    if mensaje is None:
+        # Devolver una cadena vacía para la respuesta del bot.
+        return "", estado_actual or {} 
+    
     print("❌ Activando Fallback Chatbot: La lógica principal no cargó.")
     error_msg = "Error: El chat está en modo de emergencia. Revisa los logs de Hugging Face."
     
-    # El retorno siempre debe ser (string, dict) para pasar la validación de Gradio/Pydantic V2
     return error_msg, estado_actual or {}
 # ====================================================================
 
@@ -119,6 +127,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
         # Usa la función de fallback si el chatbot principal falló al cargar
         funcion_chatbot_segura = responder_chatbot if chatbot_cargado else fallback_chatbot_fn
         
+        # 🚨 LA LLAMADA FINAL CON LA FUNCIÓN SEGURA
         gr.ChatInterface(fn=funcion_chatbot_segura, chatbot=gr.Chatbot(height=400),
                          textbox=gr.Textbox(placeholder="Escribe tu solicitud aquí...", container=False, scale=7),
                          title="Asistente Virtual de Citas",
