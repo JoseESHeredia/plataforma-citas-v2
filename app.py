@@ -95,16 +95,14 @@ def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
 
 
 # ====================================================================
-# 🚨 FUNCIÓN DE FALLBACK PARA EVITAR GRADIO VALIDATION ERROR (FINAL)
+# FUNCIÓN DE FALLBACK (Para evitar fallos de inicialización)
 # ====================================================================
 def fallback_chatbot_fn(mensaje, historial_chat, estado_actual):
     """
-    Solución final para el error de caching de Gradio/Pydantic V2.
-    Asegura que el retorno sea (string, dict) en CUALQUIER caso de error o inicialización.
+    Solución para el error de caching. Devuelve una cadena vacía en la inicialización.
     """
-    # Si el mensaje es None, Gradio está haciendo caching/inicialización
-    if mensaje is None or mensaje == "":
-        # Devolver una cadena vacía "", que es el tipo de dato que espera Gradio.
+    # Si el mensaje es None o una cadena vacía, Gradio está haciendo caching
+    if mensaje is None or (isinstance(mensaje, str) and mensaje.strip() == ""):
         return "", estado_actual or {} 
     
     print("❌ Activando Fallback Chatbot: La lógica principal no cargó.")
@@ -123,15 +121,15 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
     with gr.Tab("Chatbot (NLP)"):
         gr.Markdown("### Conversa para agendar, consultar o cancelar")
         
-        # Usa la función de fallback si el chatbot principal falló al cargar
         funcion_chatbot_segura = responder_chatbot if chatbot_cargado else fallback_chatbot_fn
         
-        # 🚨 LA LLAMADA FINAL CON LA FUNCIÓN SEGURA
+        # 🚨 CORRECCIÓN FINAL: Desactivar caching para evitar la ValidationError
         gr.ChatInterface(fn=funcion_chatbot_segura, chatbot=gr.Chatbot(height=400),
                          textbox=gr.Textbox(placeholder="Escribe tu solicitud aquí...", container=False, scale=7),
                          title="Asistente Virtual de Citas",
                          examples=[["Agendar cita Dr.Perez mañana", {}], ["Ver mis citas dni 98765432", {}], ["cancelar cita 98765432 para 2025-10-30", {}]],
-                         additional_inputs=[estado_conversacion], additional_outputs=[estado_conversacion])
+                         additional_inputs=[estado_conversacion], additional_outputs=[estado_conversacion],
+                         cache_examples=False) # <--- ¡SOLUCIÓN FINAL!
 
     # --- PESTAÑA 2: VOZ ---
     with gr.Tab("Voz (STT + Chatbot)"):
