@@ -30,7 +30,7 @@ try:
     chatbot_cargado = True
     print("✅ Módulo 'chatbot_logic.py' cargado.")
 except ImportError as e:
-    # Este es el bloque que se ejecuta debido al error de Pydantic/spaCy
+    # Este bloque ahora solo se activa si hay un error de lógica interna
     print(f"❌ ERROR FATAL: No se pudo importar 'chatbot_logic.py': {e}")
     chatbot_cargado = False
     # Placeholders en líneas separadas
@@ -100,8 +100,10 @@ def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
 def fallback_chatbot_fn(mensaje, historial_chat, estado_actual):
     """Función de emergencia que siempre devuelve una cadena de texto válida."""
     print("❌ Activando Fallback Chatbot: La lógica principal no cargó.")
-    error_msg = "Error: La función NLP/Chatbot no pudo cargarse debido a un conflicto de dependencias. Revisa los logs de Hugging Face."
-    return error_msg, {}
+    error_msg = "Error: El chat está en modo de emergencia. Revisa los logs de Hugging Face."
+    
+    # El retorno siempre debe ser (string, dict) para pasar la validación de Gradio/Pydantic V2
+    return error_msg, estado_actual or {}
 # ====================================================================
 
 
@@ -110,11 +112,11 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
     estado_conversacion = gr.State({}) # Estado compartido
     gr.Markdown("# 🤖 Plataforma de Citas por Voz y Chat (Sprint 3)")
 
-    # --- PESTAÑA 1: CHATBOT ---
+    # --- PESTAÑA 1: CHATBOT (SEGURO) ---
     with gr.Tab("Chatbot (NLP)"):
         gr.Markdown("### Conversa para agendar, consultar o cancelar")
         
-        # 🚨 CÓDIGO MODIFICADO: Usa la función de fallback si el chatbot principal falló al cargar
+        # Usa la función de fallback si el chatbot principal falló al cargar
         funcion_chatbot_segura = responder_chatbot if chatbot_cargado else fallback_chatbot_fn
         
         gr.ChatInterface(fn=funcion_chatbot_segura, chatbot=gr.Chatbot(height=400),
@@ -135,11 +137,11 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
     with gr.Tab("Datos (Google Sheets - EN VIVO)"):
         gr.Markdown("### Últimos Registros en Google Sheets")
         gr.Markdown("⚠️ Lee de GSheets (puede tardar).")
-        with gr.Row(): # Asegurar indentación correcta
+        with gr.Row(): 
             df_pacientes_display = gr.DataFrame(label="Pacientes (Google Sheet)")
             df_citas_display = gr.DataFrame(label="Citas (Google Sheet)")
         btn_actualizar_datos = gr.Button("Actualizar Tablas (desde Google Sheets)")
-        btn_actualizar_datos.click(fn=cargar_datos_gsheets, inputs=None, outputs=[df_pacientes_display, df_citas_display]) # Corchete cerrado
+        btn_actualizar_datos.click(fn=cargar_datos_gsheets, inputs=None, outputs=[df_pacientes_display, df_citas_display])
 
     # --- PESTAÑA 4: TESTEO (CRUD) ---
     with gr.Tab("Testeo (CRUD GSheets)"):
@@ -162,8 +164,8 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
 if __name__ == "__main__":
     print("Intentando lanzar la aplicación Gradio...")
     try:
-        # Nota: Hugging Face ignora estos parámetros, pero son necesarios para el testeo local
+        # Usamos 0.0.0.0 para compatibilidad en contenedores de Hugging Face
         demo.queue().launch(server_name="0.0.0.0", server_port=7860) 
-        print("¡Aplicación lanzada! Accede en http://127.0.0.1:7860")
+        print("¡Aplicación lanzada! Accede en http://0.0.0.0:7860")
     except Exception as e:
         print(f"❌ ERROR al lanzar Gradio: {e}")

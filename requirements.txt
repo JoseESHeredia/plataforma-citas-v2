@@ -7,9 +7,12 @@ faster-whisper
 # --- Sprint 2 ---
 gspread
 oauth2client
-spacy>=3.7.0  # CAMBIO CLAVE: Usar una versión moderna de spaCy
-# pydantic==1.8.2 # ELIMINADA: Dejamos que pip la resuelva
+spacy>=3.7.0  # Versión compatible con Pydantic V2
+# Instalamos el modelo de spaCy como paquete para asegurar la descarga y la ubicación.
+es-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.7.0/es_core_news_sm-3.7.0.tar.gz
 
 # --- Sprint 3 ---
 scikit-learn
 joblib
+
+# Dejamos que 'pip' resuelva la mejor versión de Pydantic V2, ya que spaCy >= 3.7 lo soporta.
