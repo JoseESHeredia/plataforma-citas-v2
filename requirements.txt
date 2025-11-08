@@ -16,3 +16,6 @@ scikit-learn
 joblib
 
 # Dejamos que 'pip' resuelva la mejor versión de Pydantic V2, ya que spaCy >= 3.7 lo soporta.
+
+# Nueva dependencia del procesador_nlp.py 
+dateparser

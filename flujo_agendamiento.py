@@ -1,8 +1,8 @@
 import gspread
 from google.oauth2.service_account import Credentials
 import csv
-import os # Lo mantenemos para la función de persistir
-import json # Necesario para los Secrets
+import os 
+import json # ⭐️ Añadido para la lógica de HF
 
 # ===== Constantes =====
 # Apuntan a los archivos CSV de backup
@@ -16,19 +16,19 @@ try:
         "https://www.googleapis.com/auth/drive"
     ]
 
-    # --- BLOQUE CORREGIDO (INDENTACIÓN) ---
+    # --- ⭐️ LÓGICA FUSIONADA (Compatible con HF y Local) ---
     google_creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
     if not google_creds_json:
-        print("Secret no encontrado, usando credenciales.json local...")
+        print("flujo_agendamiento: Secret no encontrado, usando credenciales.json local...")
         cred = Credentials.from_service_account_file("credenciales.json", scopes=alcances)
     else:
-        print("Cargando credenciales desde Secret...")
+        print("flujo_agendamiento: Cargando credenciales desde Secret...")
         cred_dict = json.loads(google_creds_json)
         cred = Credentials.from_service_account_info(cred_dict, scopes=alcances)
-    # --- FIN CORRECCIÓN ---
-
-    # Estas líneas van DESPUÉS del if/else, pero DENTRO del try
+    
     cliente = gspread.authorize(cred)
+    # --- Fin de Lógica Fusionada ---
+
     documento = cliente.open("Base de Datos Citas (Proyecto Voz y Chat)")
     pacientes_sheet = documento.worksheet("Pacientes")
     citas_sheet = documento.worksheet("Citas")
@@ -251,16 +251,14 @@ def cancelar_cita(dni, fecha):
             estado_cita = datos_fila[6] # Columna 7 es 'Estado'
             
             # Comparamos la fecha y que esté 'Pendiente'
-            # Usamos .lower() para ser flexibles
             if fecha_cita == fecha and estado_cita.lower() == "pendiente":
                 fila_a_cancelar = celda.row
                 break
         
         if fila_a_cancelar:
-            # 3. Actualizar la celda de Estado (Columna 7) a 'cancelado' (minúscula)
-            # para coincidir con tu GSheet
-            citas_sheet.update_cell(fila_a_cancelar, 7, "cancelado") 
-            print(f"✅ Cita en fila {fila_a_cancelar} actualizada a 'cancelado'.")
+            # 3. Actualizar la celda de Estado (Columna 7) a 'Cancelada'
+            citas_sheet.update_cell(fila_a_cancelar, 7, "Cancelado") 
+            print(f"✅ Cita en fila {fila_a_cancelar} actualizada a 'Cancelado'.")
             return f"Éxito: La cita del {fecha} para el DNI {dni} ha sido cancelada."
         else:
             # Mensaje más claro si no se encuentra o ya está cancelada/confirmada
@@ -340,7 +338,7 @@ if __name__ == "__main__":
     if isinstance(citas_encontradas, list):
         print(f"Resultado LEER: Se encontraron {len(citas_encontradas)} citas.")
         for cita in citas_encontradas:
-            # --- Usa encabezados con Mayúscula (ID_Cita, Fecha, Estado) ---
+            # --- Usa encabezados con Mayúscula ---
             print(f"  > Cita ID: {cita['ID_Cita']}, Fecha: {cita['Fecha']}, Estado: {cita['Estado']}")
     else:
         print(f"Resultado LEER: {citas_encontradas}")

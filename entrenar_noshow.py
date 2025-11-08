@@ -8,6 +8,8 @@ from sklearn.metrics import accuracy_score, roc_auc_score, confusion_matrix, cla
 import gspread
 from google.oauth2.service_account import Credentials
 import joblib # Para guardar el modelo
+import os # ⭐️ Añadido para la lógica de HF
+import json # ⭐️ Añadido para la lógica de HF
 
 # --- Configuración ---
 NOMBRE_DOCUMENTO = "Base de Datos Citas (Proyecto Voz y Chat)"
@@ -22,8 +24,20 @@ def cargar_datos_gsheets():
     print(f"📥 Cargando datos desde Google Sheets: Hoja '{NOMBRE_HOJA_TRAINING}'...")
     try:
         alcances = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        cred = Credentials.from_service_account_file("credenciales.json", scopes=alcances)
+        
+        # --- ⭐️ LÓGICA FUSIONADA (Compatible con HF y Local) ---
+        google_creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+        if not google_creds_json:
+            print("entrenar_noshow: Secret no encontrado, usando credenciales.json local...")
+            cred = Credentials.from_service_account_file("credenciales.json", scopes=alcances)
+        else:
+            print("entrenar_noshow: Cargando credenciales desde Secret...")
+            cred_dict = json.loads(google_creds_json)
+            cred = Credentials.from_service_account_info(cred_dict, scopes=alcances)
+        
         cliente = gspread.authorize(cred)
+        # --- Fin de Lógica Fusionada ---
+
         documento = cliente.open(NOMBRE_DOCUMENTO)
         hoja = documento.worksheet(NOMBRE_HOJA_TRAINING)
         datos = hoja.get_all_records() # Lee como lista de diccionarios
@@ -99,7 +113,9 @@ def entrenar_modelo(X, y, tipo_modelo="logistic"):
     print(f"\n🧠 Entrenando modelo: {tipo_modelo.upper()}...")
 
     # Dividir datos en entrenamiento y prueba (80/20)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    # estratificar por 'y' es importante si los datos están desbalanceados
+    stratify_target = y if len(y.unique()) > 1 else None
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=stratify_target)
     print(f"Datos divididos: {len(X_train)} para entrenar, {len(X_test)} para probar.")
 
     if tipo_modelo == "logistic":
