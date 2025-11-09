@@ -10,8 +10,25 @@ import gspread
 import tempfile
 import scipy.io.wavfile as wavfile
 from datetime import date
-import os # Movido aquí desde la función (mejor práctica)
-import re # Añadido por si acaso para futuras expansiones
+import os 
+import re 
+from TTS.api import TTS # ⭐️ CAMBIO S4-01: Nueva importación
+
+# ============================================================
+# ⭐️ CAMBIO S4-01: Inicializar el modelo TTS (Coqui)
+# ============================================================
+# Esto puede tardar la primera vez que se ejecuta mientras descarga el modelo.
+try:
+    print("Cargando modelo TTS (Coqui)...")
+    # Este es un modelo en español rápido y de calidad decente:
+    tts_model = TTS(model_name="tts_models/es/css10/vits", progress_bar=True, gpu=False)
+    tts_cargado = True
+    print("✅ Modelo TTS cargado.")
+except Exception as e:
+    # Si falla (ej. en una máquina sin internet), la app seguirá funcionando sin voz.
+    print(f"❌ ADVERTENCIA: No se pudo cargar el modelo TTS: {e}")
+    tts_model = None
+    tts_cargado = False
 
 # ============================================================
 # 🔧 Importaciones de Lógica
@@ -127,7 +144,8 @@ def consultar_citas_gradio(dni):
 
 
 def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
-    """Primero transcribe el audio, luego llama al chatbot."""
+    # Esta función es la antigua de "Voz". La mantenemos por si se usa en otro lado.
+    # La nueva lógica de audio está en "procesar_audio_a_textbox"
     print(f"🎙️ Recibido audio: {audio_path}")
     if audio_path is None:
         return "[No audio]", "[Esperando]", estado_actual or {}
@@ -145,6 +163,21 @@ def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
 
     return texto_transcrito, resp_bot, n_estado
 
+# ⭐️ CAMBIO S4-01: Nueva función para generar el audio
+def generar_audio_respuesta(texto_respuesta):
+    """Genera un archivo WAV a partir del texto usando TTS."""
+    if not tts_cargado or not texto_respuesta or texto_respuesta.startswith("❌"):
+        return None # No generar audio si no hay TTS o si es un error
+    try:
+        # Usamos un archivo temporal para la respuesta
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio_file:
+            tts_model.tts_to_file(text=texto_respuesta, file_path=temp_audio_file.name)
+            print(f"🔊 Audio de respuesta generado en: {temp_audio_file.name}")
+            return temp_audio_file.name
+    except Exception as e:
+        print(f"❌ Error al generar audio TTS: {e}")
+        return None
+
 
 # ============================================================
 # 🧠 Interfaz Gradio
@@ -153,7 +186,7 @@ def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
 with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
     estado_conversacion = gr.State({})
 
-    gr.Markdown("# 🤖 Plataforma de Citas por Voz y Chat (Sprint 3)")
+    gr.Markdown("# 🤖 Plataforma de Citas por Voz y Chat (Sprint 4)")
 
     # --------------------------------------------------------
     # 🗨️ PESTAÑA 1: Chatbot (Texto + Audio)
@@ -162,6 +195,9 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
         gr.Markdown("### 💬 Envía texto o audio al asistente para agendar, consultar o cancelar citas")
 
         chatbot = gr.Chatbot(label="Asistente Virtual", height=400, bubble_full_width=False)
+        
+        # ⭐️ CAMBIO S4-01: Componente de audio para la respuesta
+        audio_respuesta = gr.Audio(label="Respuesta de Voz", autoplay=True, visible=True, type="filepath")
 
         with gr.Column():
             entrada_texto = gr.Textbox(
@@ -189,12 +225,22 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
 
         # --- Funciones internas ---
         def manejar_texto(mensaje, historial, estado):
+            # Limpiar el audio anterior
+            audio_gen = None 
+            
             if not mensaje:
-                return historial, estado, gr.update(value="")
+                return historial, estado, gr.update(value=""), None
+            
             if not chatbot_cargado:
-                return historial + [[mensaje, "❌ Chatbot no cargado."]], estado, gr.update(value="")
-            respuesta, nuevo_estado = responder_chatbot(mensaje, historial, estado)
-            return historial + [[mensaje, respuesta]], nuevo_estado, gr.update(value="")
+                respuesta = "❌ Chatbot no cargado."
+                audio_gen = None
+            else:
+                respuesta, nuevo_estado = responder_chatbot(mensaje, historial, estado)
+                # ⭐️ CAMBIO S4-01: Generar audio de la respuesta
+                audio_gen = generar_audio_respuesta(respuesta) 
+
+            # ⭐️ CAMBIO S4-01: Devolver el audio generado
+            return historial + [[mensaje, respuesta]], nuevo_estado, gr.update(value=""), audio_gen
 
         def procesar_audio_a_textbox(audio_array):
             if audio_array is None or len(audio_array) == 0:
@@ -218,7 +264,6 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
                     texto = "[No se reconoció voz]"
                 print(f"📝 Transcripción obtenida: {texto}")
 
-                # import os # ⬅️ Movido al inicio del archivo
                 os.unlink(temp_path)
                 return gr.update(value=texto)
 
@@ -228,10 +273,12 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
 
         # --- Conexiones ---
         btn_procesar_audio.click(fn=procesar_audio_a_textbox, inputs=[audio_input], outputs=[entrada_texto])
+        
+        # ⭐️ CAMBIO S4-01: Añadir 'audio_respuesta' a las salidas
         btn_enviar_texto.click(fn=manejar_texto, inputs=[entrada_texto, chatbot, estado_conversacion],
-                               outputs=[chatbot, estado_conversacion, entrada_texto])
+                               outputs=[chatbot, estado_conversacion, entrada_texto, audio_respuesta])
         entrada_texto.submit(fn=manejar_texto, inputs=[entrada_texto, chatbot, estado_conversacion],
-                             outputs=[chatbot, estado_conversacion, entrada_texto])
+                             outputs=[chatbot, estado_conversacion, entrada_texto, audio_respuesta])
    
 
     # --------------------------------------------------------
