@@ -77,7 +77,8 @@ def extraer_entidades(texto):
     # 2. Extracer DNI (Regex)
     match_dni = re.search(r'\b(\d{8})\b', texto)
     if match_dni:
-        entidades["dni"] = match_dni.group(1)
+        # ⭐️⭐️⭐️ AQUÍ ESTÁ LA CORRECCIÓN ⭐️⭐️⭐️
+        entidades["DNI"] = match_dni.group(1) # Cambiado de 'dni' a 'DNI'
 
     # 3. Extraer Fecha (Reglas simples)
     texto_lower = texto.lower()
