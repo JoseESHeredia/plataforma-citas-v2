@@ -85,13 +85,9 @@ def extraer_entidades(texto):
     fecha_obj = dateparser.parse(texto_sin_hora, languages=['es'], settings=settings) 
     
     if fecha_obj:
+        # ⭐️ AÑADIDO: Formatear siempre a AAAA-MM-DD
         entidades["Fecha"] = fecha_obj.strftime("%Y-%m-%d")
-    else:
-        # Regex simple para AAAA-MM-DD (fallback)
-        match_fecha_iso = re.search(r'(\d{4}-\d{2}-\d{2})', texto)
-        if match_fecha_iso:
-             entidades["Fecha"] = match_fecha_iso.group(1)
-
+    
     # 4. Extraer Hora (Reglas simples) - ⭐️ CORREGIDO (Bug G)
     # Busca formatos como "14:30", "2pm", "3 pm", "a las 15"
     match_hora = re.search(r'(\b\d{1,2})\s*(?::(\d{2}))?\s*(am|pm)?', texto_lower)
