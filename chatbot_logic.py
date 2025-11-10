@@ -191,9 +191,9 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     # ⭐️ LÓGICA DE PRIORIDADES ⭐️
     # =========================================================
 
-    # PRIORIDAD 1: ¿Quiere el usuario cambiar de tema? (FIX CRÍTICO: Re-Ejecución Forzada)
+    # PRIORIDAD 1: ¿Quiere el usuario cambiar de tema? (Reset incondicional)
     if intencion_raw in INTENCIONES_PRINCIPALES and intencion_raw != intencion_actual:
-        print(f"FIX (P1): CAMBIO DE INTENCIÓN CLARO. De '{intencion_actual}' a '{intencion_raw}'. REINICIANDO.")
+        print(f"FIX (P1): CAMBIO DE INTENCIÓN CLARO. De '{intencion_actual}' a '{intencion_raw}'. RESETEANDO ESTADO.")
         
         entidades_limpias = {k: v for k, v in entidades_raw.items() if v}
         
@@ -204,16 +204,18 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         estado_actual["intent"] = intencion_raw
         estado_actual.update(entidades_limpias)
         
-        # 3. FORZAR RE-EJECUCIÓN INMEDIATA con el estado limpio.
-        # Esto garantiza que el flujo comience de cero.
-        print("FORZANDO RE-EJECUCIÓN con el nuevo intent y estado limpio.")
-        return responder_chatbot(mensaje, historial_chat, estado_actual) 
+        # El flujo continuará abajo con el nuevo intent y estado limpio.
 
-    # PRIORIDAD 2: Si no... ¿Me está respondiendo?
+    # PRIORIDAD 2: Si no... ¿Me está respondiendo? (FIX CRÍTICO)
     elif campo_pendiente:
         print(f"FIX (P2): 'Sticky Intent'. El usuario está respondiendo. Manteniendo '{intencion_actual}'.")
         
-        intencion_raw = intencion_actual 
+        # Si estamos en el flujo AGENDAR y nos responden el DNI, forzamos el intent a AGENDAR.
+        # Esto soluciona el problema de que el NLP detecte "consultar" al ver 8 dígitos.
+        if intencion_actual == "agendar" and campo_pendiente == "DNI":
+             intencion_raw = "agendar"
+        else:
+             intencion_raw = intencion_actual 
         
         if campo_pendiente not in entidades_raw:
             entidades_raw[campo_pendiente] = mensaje.strip()
@@ -244,7 +246,9 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     if estado_actual.get("intent") == "agendar":
         print("Flujo AGENDAR.")
         
-        # --- 1. Validar/Buscar DNI (Solo una vez al inicio) ---
+        # --- 1. Lógica de avance secuencial (manejo de DNI) ---
+        
+        # Procesar DNI si está presente y no validado
         if "DNI" in estado_actual and not estado_actual.get("DNI_validado"):
             dni_valor = estado_actual["DNI"]
             valor_limpio, error_formato = validar_formato("DNI", dni_valor)
@@ -275,9 +279,9 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             
             respuesta += RESPUESTAS_PREGUNTAS[siguiente_campo]
             estado_actual["campo_preguntado"] = siguiente_campo
-            return respuesta, estado_actual
-        
-        # --- 2. Bucle para el resto de los campos (Avance secuencial) ---
+            return respuesta, estado_actual # FINALIZA TURNO AQUÍ
+
+        # --- 2. Bucle para el resto de los campos (Avance secuencial y validación) ---
         for campo in CAMPOS_AGENDAR:
             
             if estado_actual.get(f"{campo}_validado"):
