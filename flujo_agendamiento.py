@@ -2,7 +2,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import csv
 import os 
-import json 
+import json # ⭐️ Añadido para la lógica de HF
 
 # ===== Constantes =====
 # Apuntan a los archivos CSV de backup
@@ -16,7 +16,7 @@ try:
         "https://www.googleapis.com/auth/drive"
     ]
 
-    # --- LÓGICA FUSIONADA (Compatible con HF y Local) ---
+    # --- ⭐️ LÓGICA FUSIONADA (Compatible con HF y Local) ---
     google_creds_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
     if not google_creds_json:
         print("flujo_agendamiento: Secret no encontrado, usando credenciales.json local...")
@@ -67,7 +67,7 @@ def generar_id(prefijo, hoja):
     return f"{prefijo}{max_num + 1:03d}"
 
 
-# ===== Lógica de negocio (Médicos) - CON FIX de .strip() =====
+# ===== Lógica de negocio (Médicos) - Sin cambios =====
 def asignar_especialidad(medico):
     especialidades = {
         "Dr.Vega": "Endodoncia",
@@ -76,8 +76,7 @@ def asignar_especialidad(medico):
         "Dr.Castro": "Protesis dental",
         "Dra.Paredes": "Cirugia Oral"
     }
-    # ⭐️ FIX: Agregamos .strip() para limpiar cualquier espacio en blanco
-    return especialidades.get(medico.strip() if isinstance(medico, str) else medico) 
+    return especialidades.get(medico, "General")
 
 def obtener_medicos():
     especialidades = {
@@ -113,65 +112,62 @@ def persistir_csv_backup(hoja_gspread, nombre_archivo_csv):
         print(f"❌ Error al crear backup CSV: {e}")
 
 
-# ===== Comando Agendar (CORREGIDO para evitar duplicados y DNI como string) =====
+# ===== Comando Agendar (CORREGIDO para evitar duplicados) =====
 def agendar(nombre, dni, telefono, email, fecha, hora, medico):
     """
     Valida datos, busca si el paciente ya existe por DNI,
     lo crea si no existe, y luego agenda la cita en Google Sheets.
     """
 
-    # --- 1. Validaciones ---
+    # --- 1. Validaciones (igual que antes) ---
     try:
-        # FIX: dni_limpio debe ser string para buscar en sheets
-        dni_limpio = ''.join(filter(str.isdigit, str(dni))) 
+        dni_limpio = ''.join(filter(str.isdigit, str(dni)))
         if len(dni_limpio) != 8:
             raise ValueError(f"DNI debe tener 8 dígitos (dato: {dni})")
-        dni_str = dni_limpio 
+        dni_num = int(dni_limpio)
     except ValueError as e:
-        print(f"❌ Error de validación DNI: {e}")
+        print(f"❌ Error de validación: {e}")
         return f"Error: DNI debe tener 8 dígitos (recibido: {dni})."
 
     try:
         tel_limpio = ''.join(filter(str.isdigit, str(telefono)))
         if len(tel_limpio) != 9 or not tel_limpio.startswith("9"):
             raise ValueError(f"Teléfono debe tener 9 dígitos y empezar con 9 (dato: {telefono})")
-        tel_str = tel_limpio 
+        tel_num = int(tel_limpio)
     except ValueError as e:
-        print(f"❌ Error de validación Teléfono: {e}")
+        print(f"❌ Error de validación: {e}")
         return f"Error: Teléfono debe tener 9 dígitos y empezar con 9 (recibido: {telefono})."
-
-    # --- CORRECCIÓN (Bug D - Validación Backend Médico) ---
-    especialidad = asignar_especialidad(medico)
-    if especialidad is None:
-        print(f"❌ ERROR FATAL (Backend): Intento de agendar con médico inválido: '{medico}'")
-        return f"Error de Sistema: El médico '{medico}' no es válido."
-
 
     # --- 2. Verificar Conexión ---
     if pacientes_sheet is None or citas_sheet is None:
         return "Error: No hay conexión a Google Sheets. Revisa las credenciales."
 
     try:
-        # --- 3. Buscar Paciente por DNI (usando string) ---
-        print(f"Buscando paciente con DNI: {dni_str}...")
-        celda_paciente = pacientes_sheet.find(dni_str, in_column=3) # Columna 3 es 'DNI'
+        # --- 3. Buscar Paciente por DNI ---
+        print(f"Buscando paciente con DNI: {dni_num}...")
+        celda_paciente = pacientes_sheet.find(str(dni_num), in_column=3) # Columna 3 es 'DNI'
 
         if celda_paciente:
             # --- Paciente ENCONTRADO ---
-            id_paciente = pacientes_sheet.cell(celda_paciente.row, 1).value 
+            id_paciente = pacientes_sheet.cell(celda_paciente.row, 1).value # Columna 1 es 'ID_Paciente'
             nombre_existente = pacientes_sheet.cell(celda_paciente.row, 2).value
             print(f"✅ Paciente encontrado: {id_paciente} ({nombre_existente}). Usando ID existente.")
+            # (Opcional: Podrías actualizar el teléfono/email si son diferentes)
+            # pacientes_sheet.update_cell(celda_paciente.row, 4, tel_num)
+            # pacientes_sheet.update_cell(celda_paciente.row, 5, email)
 
         else:
             # --- Paciente NO Encontrado: Crear uno nuevo ---
-            print(f"Paciente con DNI {dni_str} no encontrado. Creando nuevo paciente...")
+            print(f"Paciente con DNI {dni_num} no encontrado. Creando nuevo paciente...")
             id_paciente = generar_id("P", pacientes_sheet)
-            fila_paciente = [id_paciente, nombre, dni_str, tel_str, email]
+            fila_paciente = [id_paciente, nombre, dni_num, tel_num, email]
             pacientes_sheet.append_row(fila_paciente, value_input_option="USER_ENTERED")
             print(f"✅ Nuevo Paciente creado en GSheets: {id_paciente}")
 
-        # --- 4. Crear Cita ---
+        # --- 4. Crear Cita (usando el ID_Paciente encontrado o creado) ---
         id_cita = generar_id("C", citas_sheet)
+        especialidad = asignar_especialidad(medico)
+        # Estado inicial siempre es "Pendiente" (con mayúscula inicial)
         fila_cita = [id_cita, id_paciente, fecha, hora, medico, especialidad, "Pendiente"]
         citas_sheet.append_row(fila_cita, value_input_option="USER_ENTERED")
         print(f"✅ Cita agendada en GSheets: {id_cita} para paciente {id_paciente}")
@@ -195,17 +191,18 @@ def consultar_citas(dni):
         return "Error: No hay conexión a Google Sheets."
 
     try:
-        dni_str = str(dni).strip() # Asegurar que sea string
         # 1. Buscar el ID del Paciente usando el DNI
-        celda_paciente = pacientes_sheet.find(dni_str, in_column=3) 
+        # Columna 3 es 'DNI'
+        celda_paciente = pacientes_sheet.find(dni, in_column=3) 
         if not celda_paciente:
-            return f"No se encontró ningún paciente con el DNI {dni_str}."
+            return f"No se encontró ningún paciente con el DNI {dni}."
         
         # Columna 1 es 'ID_Paciente', Columna 2 es 'Nombre'
         id_paciente = pacientes_sheet.cell(celda_paciente.row, 1).value 
         nombre_paciente = pacientes_sheet.cell(celda_paciente.row, 2).value 
 
         # 2. Buscar todas las citas con ese ID de Paciente
+        # Columna 2 es 'ID_Paciente'
         celdas_citas = citas_sheet.findall(id_paciente, in_column=2) 
         
         if not celdas_citas:
@@ -237,11 +234,10 @@ def cancelar_cita(dni, fecha):
         return "Error: No hay conexión a Google Sheets."
 
     try:
-        dni_str = str(dni).strip() # Asegurar que sea string
         # 1. Buscar el ID del Paciente
-        celda_paciente = pacientes_sheet.find(dni_str, in_column=3) # Columna 3 es 'DNI'
+        celda_paciente = pacientes_sheet.find(dni, in_column=3) # Columna 3 es 'DNI'
         if not celda_paciente:
-            return f"No se encontró ningún paciente con el DNI {dni_str}."
+            return f"No se encontró ningún paciente con el DNI {dni}."
         
         id_paciente = pacientes_sheet.cell(celda_paciente.row, 1).value # Columna 1 es 'ID_Paciente'
         
@@ -260,13 +256,13 @@ def cancelar_cita(dni, fecha):
                 break
         
         if fila_a_cancelar:
-            # 3. Actualizar la celda de Estado (Columna 7) a 'Cancelado'
+            # 3. Actualizar la celda de Estado (Columna 7) a 'Cancelada'
             citas_sheet.update_cell(fila_a_cancelar, 7, "Cancelado") 
             print(f"✅ Cita en fila {fila_a_cancelar} actualizada a 'Cancelado'.")
-            return f"Éxito: La cita del {fecha} para el DNI {dni_str} ha sido cancelada."
+            return f"Éxito: La cita del {fecha} para el DNI {dni} ha sido cancelada."
         else:
             # Mensaje más claro si no se encuentra o ya está cancelada/confirmada
-            return f"No se encontró una cita 'Pendiente' para el DNI {dni_str} en la fecha {fecha}."
+            return f"No se encontró una cita 'Pendiente' para el DNI {dni} en la fecha {fecha}."
 
     except Exception as e:
         print(f"❌ Error durante la cancelación de cita: {e}")
@@ -289,15 +285,15 @@ def buscar_paciente_por_dni(dni):
 
         if celda_paciente:
             # Paciente encontrado, devolver sus datos
-            id_paciente = pacientes_sheet.cell(celda_paciente.row, 1).value 
-            nombre = pacientes_sheet.cell(celda_paciente.row, 2).value      
-            telefono = pacientes_sheet.cell(celda_paciente.row, 4).value    
-            email = pacientes_sheet.cell(celda_paciente.row, 5).value       
+            id_paciente = pacientes_sheet.cell(celda_paciente.row, 1).value # Col 1: ID_Paciente
+            nombre = pacientes_sheet.cell(celda_paciente.row, 2).value      # Col 2: Nombre
+            telefono = pacientes_sheet.cell(celda_paciente.row, 4).value    # Col 4: Telefono
+            email = pacientes_sheet.cell(celda_paciente.row, 5).value       # Col 5: Email
             print(f"✅ Paciente encontrado: {id_paciente} ({nombre})")
             return {
                 "ID_Paciente": id_paciente,
                 "Nombre": nombre,
-                "DNI": dni_str, 
+                "DNI": dni_str, # Devolvemos el DNI buscado
                 "Telefono": telefono,
                 "Email": email
             }
@@ -319,7 +315,7 @@ if __name__ == "__main__":
     # --- 1. Prueba de "Create" (Agendar) ---
     print("--- Probando CREAR Cita ---")
     dni_prueba = "98765432" # DNI para todas las pruebas
-    fecha_prueba = "2026-10-30" # Fecha futura para evitar errores de validación
+    fecha_prueba = "2025-10-30"
     
     mensaje_crear = agendar(
         nombre="Paciente de Prueba CRUD",
