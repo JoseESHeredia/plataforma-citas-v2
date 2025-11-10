@@ -1,0 +1,6 @@
+modelo_intent_spacy/textcat/model filter=lfs diff=lfs merge=lfs -text
+modelo_noshow.joblib filter=lfs diff=lfs merge=lfs -text
+. filter=lfs diff=lfs merge=lfs -text
+preprocesador_noshow.joblibgit filter=lfs diff=lfs merge=lfs -text
+add filter=lfs diff=lfs merge=lfs -text
+preprocesador_noshow.joblib filter=lfs diff=lfs merge=lfs -text
