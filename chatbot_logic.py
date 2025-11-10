@@ -192,13 +192,32 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     intencion_raw, entidades_raw = procesar_texto(mensaje)
     print(f"NLP RAW: Intención={intencion_raw}, Entidades={entidades_raw}")
 
-    # ⭐️ INICIO CORRECCIÓN (Bug 1 - Intención Atascada) ⭐️
-    # Si llega una intención principal NUEVA y DIFERENTE,
-    # SIEMPRE reinicia el estado, sin importar si había un campo pendiente.
-    if intencion_actual and intencion_actual != intencion_raw and intencion_raw in ["agendar", "consultar", "cancelar"]:
+    
+    # =========================================================
+    # ⭐️ INICIO DE LA CORRECCIÓN DE PRIORIDAD ⭐️
+    # =========================================================
+
+    # 3. Lógica de "Sticky Intent" (Bug A) - PRIORIDAD 1
+    # Si el bot SÍ esperaba una respuesta (campo_pendiente)...
+    if campo_pendiente:
+        # Si el NLP se confundió (ej. vio 'consultar' en un DNI), forza la intención actual
+        if intencion_raw != intencion_actual and intencion_raw in ["desconocido", "consultar", "saludo"]:
+            print(f"FIX (Bug A): NLP se confundió (vio '{intencion_raw}'). Manteniendo intent '{intencion_actual}'.")
+            intencion_raw = intencion_actual 
+            
+            # Si el NLP no extrajo la entidad, asume que el mensaje entero es la entidad
+            if campo_pendiente not in entidades_raw:
+                entidades_raw[campo_pendiente] = mensaje.strip()
+        
+        # Limpiar el flag de "pregunta pendiente"
+        if "campo_preguntado" in estado_actual:
+            del estado_actual["campo_preguntado"]
+
+    # ⭐️ CORRECCIÓN (Bug 1 - Intención Atascada) - PRIORIDAD 2 ⭐️
+    # Si NO esperaba un campo (elif), PERO llega una intención principal NUEVA...
+    elif intencion_actual and intencion_actual != intencion_raw and intencion_raw in ["agendar", "consultar", "cancelar"]:
         print(f"FIX (Bug 1): CAMBIO DE INTENCIÓN CLARO. De '{intencion_actual}' a '{intencion_raw}'. Reiniciando estado.")
         estado_actual = {} # Reinicio total
-        # NO establecemos 'respuesta' aquí, dejamos que el flujo nuevo la genere
         
         # Guardar la nueva intención y las entidades que vinieron con ella
         estado_actual["intent"] = intencion_raw
@@ -209,22 +228,10 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         campo_pendiente = None 
         intencion_actual = intencion_raw
 
-    # ⭐️ FIN CORRECCIÓN (Bug 1) ⭐️
-    
-    # 3. Lógica de "Sticky Intent" (Bug A)
-    # Si NO se reinició el estado (ej. la intención es la misma o desconocida)
-    # Y el bot SÍ esperaba una respuesta...
-    elif campo_pendiente:
-        # Si el NLP se confundió (ej. vio 'consultar' en un DNI), forza la intención actual
-        if intencion_raw != intencion_actual and intencion_raw in ["desconocido", "consultar", "saludo"]:
-            print(f"FIX (Bug A): NLP se confundió (vio '{intencion_raw}'). Manteniendo intent '{intencion_actual}'.")
-            intencion_raw = intencion_actual 
-            
-            if campo_pendiente not in entidades_raw:
-                entidades_raw[campo_pendiente] = mensaje.strip()
-        
-        if "campo_preguntado" in estado_actual:
-            del estado_actual["campo_preguntado"]
+    # =========================================================
+    # ⭐️ FIN DE LA CORRECCIÓN DE PRIORIDAD ⭐️
+    # =========================================================
+
 
     # 4. Establecer intención si es la primera vez
     if not estado_actual.get("intent"):
