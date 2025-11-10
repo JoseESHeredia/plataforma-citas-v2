@@ -84,15 +84,6 @@ EJEMPLOS_LOCALES = [
     ("tengo una consulta con el Dr. Vega para el jueves", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}),
     ("ver la cita con la Dra. Morales", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}),
     ("qué día me toca con el Dr. Pérez", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}),
-    
-    # ⭐️ NUEVOS EJEMPLOS PARA 'CONSULTAR' (PARA EVITAR CONFUSIÓN)
-    ("quiero ver mis citas", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}),
-    ("revisar mis horarios", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}),
-    ("dime mis citas", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}),
-    ("consultar mis horarios", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}),
-    ("consultar horarios", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}),
-    ("consultar tus horarios", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 1.0, "CANCELAR_CITA": 0.0}}), # Tu ejemplo
-
 
     # -------------------------------------------------------------------------
     # ❌ CANCELAR CITA (CANCELAR_CITA: 1.0)
@@ -112,14 +103,6 @@ EJEMPLOS_LOCALES = [
     ("cancelar la consulta con el Dr. Vega del viernes", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 0.0, "CANCELAR_CITA": 1.0}}),
     ("ya no asistiré con el Dr. Castro", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 0.0, "CANCELAR_CITA": 1.0}}),
     ("deseo cancelar el turno con la Dra. Paredes", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 0.0, "CANCELAR_CITA": 1.0}}),
-
-    # ⭐️ NUEVOS EJEMPLOS PARA 'CANCELAR' (PARA EVITAR CONFUSIÓN)
-    ("quiero anular una cita", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 0.0, "CANCELAR_CITA": 1.0}}),
-    ("borrar mi cita", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 0.0, "CANCELAR_CITA": 1.0}}),
-    ("ya no iré", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 0.0, "CANCELAR_CITA": 1.0}}),
-    ("cancelar la cita", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 0.0, "CANCELAR_CITA": 1.0}}),
-    ("quiero cancelar", {"cats": {"AGENDAR_CITA": 0.0, "CONSULTAR_CITA": 0.0, "CANCELAR_CITA": 1.0}}),
-
 ]
 # --- 1. Cargar y Preparar Datos (DESDE GOOGLE SHEETS) ---
 def cargar_y_preparar_datos_gsheets():
@@ -249,9 +232,7 @@ if __name__ == "__main__":
     # Si no se pudieron cargar los datos desde GSheets, usa ejemplos locales
     if not datos_completos:
         print("⚠️ No se pudo cargar dataset desde Google Sheets. Usando ejemplos locales por defecto...")
-        # ⭐️ INICIO DE LA CORRECCIÓN: Bug tipográfico
-        datos_completos = adaptar_ejemplos_locales(EJEMPLOS_LOCALES) # ✅ Corregido de 'datos_comleto'
-        # ⭐️ FIN DE LA CORRECCIÓN
+        datos_comleto = adaptar_ejemplos_locales(EJEMPLOS_LOCALES)  # ✅ corregido
 
     if datos_completos:
         train_data, test_data = train_test_split(datos_completos, test_size=0.2, random_state=42)
