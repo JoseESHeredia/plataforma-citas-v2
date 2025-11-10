@@ -76,7 +76,9 @@ def asignar_especialidad(medico):
         "Dr.Castro": "Protesis dental",
         "Dra.Paredes": "Cirugia Oral"
     }
-    return especialidades.get(medico, "General")
+    # ⭐️ ESTA LÍNEA ERA EL BUG D ⭐️
+    # Ahora devuelve None si no lo encuentra, en lugar de "General"
+    return especialidades.get(medico) 
 
 def obtener_medicos():
     especialidades = {
@@ -138,6 +140,15 @@ def agendar(nombre, dni, telefono, email, fecha, hora, medico):
         print(f"❌ Error de validación: {e}")
         return f"Error: Teléfono debe tener 9 dígitos y empezar con 9 (recibido: {telefono})."
 
+    # --- ⭐️ INICIO CORRECCIÓN (Bug D - Validación Backend Médico) ⭐️ ---
+    especialidad = asignar_especialidad(medico)
+    if especialidad is None:
+        # Si el chatbot falló y dejó pasar un médico inválido, lo detenemos aquí.
+        print(f"❌ ERROR FATAL (Backend): Intento de agendar con médico inválido: '{medico}'")
+        return f"Error de Sistema: El médico '{medico}' no es válido."
+    # --- ⭐️ FIN CORRECCIÓN (Bug D) ⭐️ ---
+
+
     # --- 2. Verificar Conexión ---
     if pacientes_sheet is None or citas_sheet is None:
         return "Error: No hay conexión a Google Sheets. Revisa las credenciales."
@@ -166,8 +177,7 @@ def agendar(nombre, dni, telefono, email, fecha, hora, medico):
 
         # --- 4. Crear Cita (usando el ID_Paciente encontrado o creado) ---
         id_cita = generar_id("C", citas_sheet)
-        especialidad = asignar_especialidad(medico)
-        # Estado inicial siempre es "Pendiente" (con mayúscula inicial)
+        # (La 'especialidad' la obtuvimos en la validación del Bug D)
         fila_cita = [id_cita, id_paciente, fecha, hora, medico, especialidad, "Pendiente"]
         citas_sheet.append_row(fila_cita, value_input_option="USER_ENTERED")
         print(f"✅ Cita agendada en GSheets: {id_cita} para paciente {id_paciente}")

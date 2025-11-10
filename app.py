@@ -12,23 +12,27 @@ import scipy.io.wavfile as wavfile
 from datetime import date
 import os 
 import re 
-from TTS.api import TTS # ⭐️ CAMBIO S4-01: Nueva importación
+# from TTS.api import TTS # ⭐️ CAMBIO S4-01: Importación movida al bloque try/except
 
 # ============================================================
 # ⭐️ CAMBIO S4-01: Inicializar el modelo TTS (Coqui)
 # ============================================================
 # Esto puede tardar la primera vez que se ejecuta mientras descarga el modelo.
+# ⭐️ INICIO DE LA CORRECCIÓN: Se envuelve la importación Y la inicialización
+# Esto captura el 'OSError' local de Windows sin detener la app.
 try:
+    from TTS.api import TTS # ⭐️ CAMBIO S4-01: Importación movida aquí
     print("Cargando modelo TTS (Coqui)...")
     # Este es un modelo en español rápido y de calidad decente:
     tts_model = TTS(model_name="tts_models/es/css10/vits", progress_bar=True, gpu=False)
     tts_cargado = True
     print("✅ Modelo TTS cargado.")
-except Exception as e:
+except (OSError, Exception) as e: # Captura el OSError de Windows y otros errores
     # Si falla (ej. en una máquina sin internet), la app seguirá funcionando sin voz.
     print(f"❌ ADVERTENCIA: No se pudo cargar el modelo TTS: {e}")
     tts_model = None
     tts_cargado = False
+# ⭐️ FIN DE LA CORRECCIÓN
 
 # ============================================================
 # 🔧 Importaciones de Lógica
@@ -62,6 +66,7 @@ except ImportError as e:
 
 # --- chatbot_logic ---
 try:
+    # Usamos la última versión corregida de la lógica
     from chatbot_logic import responder_chatbot, predecir_noshow
     chatbot_cargado = True
     print("✅ Módulo 'chatbot_logic.py' cargado.")
@@ -142,27 +147,6 @@ def consultar_citas_gradio(dni):
         return res_txt
     return str(resultado)
 
-
-def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
-    # Esta función es la antigua de "Voz". La mantenemos por si se usa en otro lado.
-    # La nueva lógica de audio está en "procesar_audio_a_textbox"
-    print(f"🎙️ Recibido audio: {audio_path}")
-    if audio_path is None:
-        return "[No audio]", "[Esperando]", estado_actual or {}
-
-    texto_transcrito = transcribir_audio(audio_path)
-    print(f"📝 Texto: {texto_transcrito}")
-
-    if texto_transcrito.startswith("❌") or texto_transcrito.startswith("⚠️"):
-        return texto_transcrito, f"Error: {texto_transcrito}", estado_actual or {}
-
-    if chatbot_cargado:
-        resp_bot, n_estado = responder_chatbot(texto_transcrito, historial_chat_actual, estado_actual)
-    else:
-        resp_bot, n_estado = "Error: Chatbot no cargado.", estado_actual or {}
-
-    return texto_transcrito, resp_bot, n_estado
-
 # ⭐️ CAMBIO S4-01: Nueva función para generar el audio
 def generar_audio_respuesta(texto_respuesta):
     """Genera un archivo WAV a partir del texto usando TTS."""
@@ -178,29 +162,133 @@ def generar_audio_respuesta(texto_respuesta):
         print(f"❌ Error al generar audio TTS: {e}")
         return None
 
+# ============================================================
+# 🤖 Lógica Central del Chatbot (Manejadores)
+# ============================================================
+
+# --- Manejador de Texto (Usado por Pestaña Híbrida) ---
+def manejar_texto(mensaje, historial, estado):
+    audio_gen = None 
+    if not mensaje:
+        return historial, estado, gr.update(value=""), None
+    
+    if not chatbot_cargado:
+        respuesta = "❌ Chatbot no cargado."
+    else:
+        respuesta, nuevo_estado = responder_chatbot(mensaje, historial, estado)
+        audio_gen = generar_audio_respuesta(respuesta) 
+
+    return historial + [[mensaje, respuesta]], nuevo_estado, gr.update(value=""), audio_gen
+
+# --- Manejador de Transcripción (Usado por Pestaña Híbrida) ---
+def procesar_audio_a_textbox(audio_array):
+    if audio_array is None or len(audio_array) == 0:
+        print("❌ No se recibió audio (array vacío).")
+        return gr.update(value="[No se grabó audio]")
+    try:
+        sample_rate, audio_data = audio_array
+        duration = len(audio_data) / sample_rate
+        print(f"📊 Audio recibido: sample_rate={sample_rate}, duración={duration:.2f}s, tamaño_array={len(audio_data)}")
+
+        if duration < 1.0:
+            print("⚠️ Audio demasiado corto (<1s), no se transcribe.")
+            return gr.update(value="[Audio demasiado corto, graba más tiempo]")
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            temp_path = temp_file.name
+            wavfile.write(temp_path, sample_rate, audio_data.astype(np.int16))
+
+        texto = transcribir_audio(temp_path).strip()
+        if not texto:
+            texto = "[No se reconoció voz]"
+        print(f"📝 Transcripción obtenida: {texto}")
+
+        os.unlink(temp_path)
+        return gr.update(value=texto)
+
+    except Exception as e:
+        print(f"❌ Error en procesamiento de audio: {e}")
+        return gr.update(value="[Error al procesar audio]")
+
+# --- Manejador "Solo Voz" (Usado por Pestaña Solo Voz) ---
+def manejar_solo_voz(audio_array, historial, estado):
+    if audio_array is None or len(audio_array) == 0:
+        print("❌ [Solo Voz] No se recibió audio.")
+        return historial, estado, None
+    try:
+        # 1. Transcribir el audio
+        sample_rate, audio_data = audio_array
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+            temp_path = temp_file.name
+            wavfile.write(temp_path, sample_rate, audio_data.astype(np.int16))
+        
+        texto_transcrito = transcribir_audio(temp_path).strip()
+        os.unlink(temp_path)
+        
+        if not texto_transcrito:
+            texto_transcrito = "[No se reconoció voz]"
+
+        # 2. Obtener respuesta del bot
+        respuesta_bot, nuevo_estado = responder_chatbot(texto_transcrito, historial, estado)
+        
+        # 3. Generar audio de respuesta
+        audio_gen = generar_audio_respuesta(respuesta_bot)
+
+        # 4. Devolver todo
+        return historial + [[texto_transcrito, respuesta_bot]], nuevo_estado, audio_gen
+        
+    except Exception as e:
+        print(f"❌ Error en 'manejar_solo_voz': {e}")
+        return historial + [[f"[Error: {e}]", None]], estado, None
+
 
 # ============================================================
 # 🧠 Interfaz Gradio
 # ============================================================
 
 with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
-    estado_conversacion = gr.State({})
+    
+    # --- Definición de Estados (uno por pestaña) ---
+    estado_conversacion_hibrida = gr.State({})
+    estado_conversacion_voz = gr.State({})
+    
+    # --- Mensaje de Bienvenida ---
+    bienvenida = "¡Hola! Tu bienestar es nuestra prioridad. Para ayudarte rápido, dime si quieres **agendar** una cita, **consultar** tus horarios o **cancelar** una cita."
+    historial_bienvenida = [[None, bienvenida]]
+    
+    # --- Textos de Botones de Acción ---
+    txt_accion_agendar = "Deseo agendar una cita"
+    txt_accion_consultar = "Quiero consultar mis citas"
+    txt_accion_cancelar = "Quiero cancelar mi cita"
+
 
     gr.Markdown("# 🤖 Plataforma de Citas por Voz y Chat (Sprint 4)")
 
     # --------------------------------------------------------
-    # 🗨️ PESTAÑA 1: Chatbot (Texto + Audio)
+    # 🗨️ PESTAÑA 1: Chatbot (Híbrido - Texto y Voz)
     # --------------------------------------------------------
-    with gr.Tab("Chatbot (NLP)"):
+    with gr.Tab("Chatbot (Híbrido)"):
         gr.Markdown("### 💬 Envía texto o audio al asistente para agendar, consultar o cancelar citas")
 
-        chatbot = gr.Chatbot(label="Asistente Virtual", height=400, bubble_full_width=False)
+        # ⭐️ CAMBIO: Añadido 'value=historial_bienvenida'
+        chatbot_hibrido = gr.Chatbot(
+            label="Asistente Virtual",
+            value=historial_bienvenida, 
+            height=400, 
+            bubble_full_width=False
+        )
         
-        # ⭐️ CAMBIO S4-01: Componente de audio para la respuesta
-        audio_respuesta = gr.Audio(label="Respuesta de Voz", autoplay=True, visible=True, type="filepath")
+        audio_respuesta_hibrida = gr.Audio(label="Respuesta de Voz", autoplay=True, visible=True, type="filepath")
 
         with gr.Column():
-            entrada_texto = gr.Textbox(
+            
+            # ⭐️ CAMBIO: Añadidos los 3 botones de acción rápida
+            with gr.Row():
+                btn_accion_agendar = gr.Button(txt_accion_agendar, variant="secondary")
+                btn_accion_consultar = gr.Button(txt_accion_consultar, variant="secondary")
+                btn_accion_cancelar = gr.Button(txt_accion_cancelar, variant="secondary")
+
+            entrada_texto_hibrida = gr.Textbox(
                 placeholder="Escribe tu mensaje...",
                 scale=7,
                 lines=1,
@@ -208,78 +296,75 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
                 show_label=False
             )
 
-            audio_input = gr.Audio(
+            audio_input_hibrido = gr.Audio(
                 sources=["microphone"],
                 type="numpy",
                 label=None,
                 show_label=False,
                 interactive=True,
                 streaming=False,
-                elem_id="mic_input",
+                elem_id="mic_input_hibrido",
                 autoplay=False
             )
 
             with gr.Row():
                 btn_procesar_audio = gr.Button("Procesar Audio", variant="secondary", scale=1)
                 btn_enviar_texto = gr.Button("Enviar", variant="primary", scale=1)
-
-        # --- Funciones internas ---
-        def manejar_texto(mensaje, historial, estado):
-            # Limpiar el audio anterior
-            audio_gen = None 
-            
-            if not mensaje:
-                return historial, estado, gr.update(value=""), None
-            
-            if not chatbot_cargado:
-                respuesta = "❌ Chatbot no cargado."
-                audio_gen = None
-            else:
-                respuesta, nuevo_estado = responder_chatbot(mensaje, historial, estado)
-                # ⭐️ CAMBIO S4-01: Generar audio de la respuesta
-                audio_gen = generar_audio_respuesta(respuesta) 
-
-            # ⭐️ CAMBIO S4-01: Devolver el audio generado
-            return historial + [[mensaje, respuesta]], nuevo_estado, gr.update(value=""), audio_gen
-
-        def procesar_audio_a_textbox(audio_array):
-            if audio_array is None or len(audio_array) == 0:
-                print("❌ No se recibió audio (array vacío).")
-                return gr.update(value="[No se grabó audio]")
-            try:
-                sample_rate, audio_data = audio_array
-                duration = len(audio_data) / sample_rate
-                print(f"📊 Audio recibido: sample_rate={sample_rate}, duración={duration:.2f}s, tamaño_array={len(audio_data)}")
-
-                if duration < 1.0:
-                    print("⚠️ Audio demasiado corto (<1s), no se transcribe.")
-                    return gr.update(value="[Audio demasiado corto, graba más tiempo]")
-
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-                    temp_path = temp_file.name
-                    wavfile.write(temp_path, sample_rate, audio_data.astype(np.int16))
-
-                texto = transcribir_audio(temp_path).strip()
-                if not texto:
-                    texto = "[No se reconoció voz]"
-                print(f"📝 Transcripción obtenida: {texto}")
-
-                os.unlink(temp_path)
-                return gr.update(value=texto)
-
-            except Exception as e:
-                print(f"❌ Error en procesamiento de audio: {e}")
-                return gr.update(value="[Error al procesar audio]")
-
-        # --- Conexiones ---
-        btn_procesar_audio.click(fn=procesar_audio_a_textbox, inputs=[audio_input], outputs=[entrada_texto])
         
-        # ⭐️ CAMBIO S4-01: Añadir 'audio_respuesta' a las salidas
-        btn_enviar_texto.click(fn=manejar_texto, inputs=[entrada_texto, chatbot, estado_conversacion],
-                               outputs=[chatbot, estado_conversacion, entrada_texto, audio_respuesta])
-        entrada_texto.submit(fn=manejar_texto, inputs=[entrada_texto, chatbot, estado_conversacion],
-                             outputs=[chatbot, estado_conversacion, entrada_texto, audio_respuesta])
-   
+        # --- Conexiones de Pestaña Híbrida ---
+        btn_procesar_audio.click(fn=procesar_audio_a_textbox, inputs=[audio_input_hibrido], outputs=[entrada_texto_hibrida])
+        
+        btn_enviar_texto.click(fn=manejar_texto, inputs=[entrada_texto_hibrida, chatbot_hibrido, estado_conversacion_hibrida],
+                               outputs=[chatbot_hibrido, estado_conversacion_hibrida, entrada_texto_hibrida, audio_respuesta_hibrida])
+        
+        entrada_texto_hibrida.submit(fn=manejar_texto, inputs=[entrada_texto_hibrida, chatbot_hibrido, estado_conversacion_hibrida],
+                                     outputs=[chatbot_hibrido, estado_conversacion_hibrida, entrada_texto_hibrida, audio_respuesta_hibrida])
+
+        # ⭐️ CAMBIO: Conexiones para los 3 botones de acción rápida
+        btn_accion_agendar.click(fn=manejar_texto, inputs=[gr.State(txt_accion_agendar), chatbot_hibrido, estado_conversacion_hibrida],
+                                 outputs=[chatbot_hibrido, estado_conversacion_hibrida, entrada_texto_hibrida, audio_respuesta_hibrida])
+        
+        btn_accion_consultar.click(fn=manejar_texto, inputs=[gr.State(txt_accion_consultar), chatbot_hibrido, estado_conversacion_hibrida],
+                                   outputs=[chatbot_hibrido, estado_conversacion_hibrida, entrada_texto_hibrida, audio_respuesta_hibrida])
+        
+        btn_accion_cancelar.click(fn=manejar_texto, inputs=[gr.State(txt_accion_cancelar), chatbot_hibrido, estado_conversacion_hibrida],
+                                  outputs=[chatbot_hibrido, estado_conversacion_hibrida, entrada_texto_hibrida, audio_respuesta_hibrida])
+
+    # --------------------------------------------------------
+    # 🎙️ PESTAÑA 2: Solo Voz (Nueva)
+    # --------------------------------------------------------
+    with gr.Tab("Solo Voz"):
+        gr.Markdown("### 🎤 Presiona Grabar, habla y suelta. El asistente te responderá con voz.")
+        
+        # ⭐️ CAMBIO: Añadido 'value=historial_bienvenida'
+        chatbot_voz = gr.Chatbot(
+            label="Asistente Virtual (Voz)", 
+            value=historial_bienvenida,
+            height=400, 
+            bubble_full_width=False
+        )
+        
+        audio_respuesta_voz = gr.Audio(label="Respuesta de Voz", autoplay=True, visible=True, type="filepath")
+        
+        audio_input_voz = gr.Audio(
+            sources=["microphone"],
+            type="numpy",
+            label="Presiona para grabar y luego 'Stop' para enviar",
+            show_label=True,
+            interactive=True,
+            streaming=False,
+            elem_id="mic_input_voz",
+            autoplay=False
+        )
+        
+        # --- Conexión de Pestaña Solo Voz ---
+        # ⭐️ CAMBIO: Se activa con 'stop_recording' para el flujo automático
+        audio_input_voz.stop_recording(
+            fn=manejar_solo_voz,
+            inputs=[audio_input_voz, chatbot_voz, estado_conversacion_voz],
+            outputs=[chatbot_voz, estado_conversacion_voz, audio_respuesta_voz]
+        )
+
 
     # --------------------------------------------------------
     # 📋 PESTAÑA 3: Datos (Google Sheets)
