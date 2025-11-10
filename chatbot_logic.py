@@ -186,17 +186,36 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             estado_actual = {} # Cancelado, limpiar estado
             return respuesta, estado_actual
 
-    # 2. Lógica de "Sticky Intent" (Bug A)
+    # 2. Obtener NLP y gestionar el estado (Bug 1 + Bug A)
     campo_pendiente = estado_actual.get("campo_preguntado")
     intencion_actual = estado_actual.get("intent")
     intencion_raw, entidades_raw = procesar_texto(mensaje)
     print(f"NLP RAW: Intención={intencion_raw}, Entidades={entidades_raw}")
 
-    # ⭐️ CORRECCIÓN (Bug 1): Si no hay estado, la intención actual es nula
-    if not estado_actual:
-        intencion_actual = None
+    # ⭐️ INICIO CORRECCIÓN (Bug 1 - Intención Atascada) ⭐️
+    # Si llega una intención principal NUEVA y DIFERENTE,
+    # SIEMPRE reinicia el estado, sin importar si había un campo pendiente.
+    if intencion_actual and intencion_actual != intencion_raw and intencion_raw in ["agendar", "consultar", "cancelar"]:
+        print(f"FIX (Bug 1): CAMBIO DE INTENCIÓN CLARO. De '{intencion_actual}' a '{intencion_raw}'. Reiniciando estado.")
+        estado_actual = {} # Reinicio total
+        # NO establecemos 'respuesta' aquí, dejamos que el flujo nuevo la genere
+        
+        # Guardar la nueva intención y las entidades que vinieron con ella
+        estado_actual["intent"] = intencion_raw
+        entidades_limpias = {k: v for k, v in entidades_raw.items() if v}
+        estado_actual.update(entidades_limpias)
+        
+        # Reiniciar campo_pendiente e intencion_actual para la lógica de abajo
+        campo_pendiente = None 
+        intencion_actual = intencion_raw
 
-    if campo_pendiente:
+    # ⭐️ FIN CORRECCIÓN (Bug 1) ⭐️
+    
+    # 3. Lógica de "Sticky Intent" (Bug A)
+    # Si NO se reinició el estado (ej. la intención es la misma o desconocida)
+    # Y el bot SÍ esperaba una respuesta...
+    elif campo_pendiente:
+        # Si el NLP se confundió (ej. vio 'consultar' en un DNI), forza la intención actual
         if intencion_raw != intencion_actual and intencion_raw in ["desconocido", "consultar", "saludo"]:
             print(f"FIX (Bug A): NLP se confundió (vio '{intencion_raw}'). Manteniendo intent '{intencion_actual}'.")
             intencion_raw = intencion_actual 
@@ -207,20 +226,18 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         if "campo_preguntado" in estado_actual:
             del estado_actual["campo_preguntado"]
 
-    # 3. Lógica de Cambio de Intención
-    if intencion_actual and intencion_actual != intencion_raw and not campo_pendiente and intencion_raw not in ["saludo", "desconocido"]:
-        print(f"CAMBIO DE INTENCIÓN: De '{intencion_actual}' a '{intencion_raw}'. Reiniciando.")
-        estado_actual = {} 
-        respuesta = f"Entendido, vamos a empezar de nuevo con la acción de '{intencion_raw}'."
-    
+    # 4. Establecer intención si es la primera vez
     if not estado_actual.get("intent"):
         estado_actual["intent"] = intencion_raw
 
-    # 4. Consolidar Entidades (Bug "Recabar Datos")
+    # 5. Consolidar Entidades (Bug "Recabar Datos")
     entidades_limpias = {k: v for k, v in entidades_raw.items() if v}
-    estado_actual.update(entidades_limpias)
+    # ⭐️ CORRECCIÓN: No sobrescribir entidades ya validadas
+    for k, v in entidades_limpias.items():
+        if not estado_actual.get(f"{k}_validado"):
+            estado_actual[k] = v
     
-    # 5. Lógica de Flujo por Intención
+    # 6. Lógica de Flujo por Intención
     
     # =========================================================
     # ➡️ FLUJO: AGENDAR (Bugs B, C, E, F)
