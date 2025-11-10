@@ -192,58 +192,67 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     intencion_raw, entidades_raw = procesar_texto(mensaje)
     print(f"NLP RAW: Intención={intencion_raw}, Entidades={entidades_raw}")
 
-    
-    # =========================================================
-    # ⭐️ INICIO DE LA LÓGICA DE PRIORIDADES (V4) ⭐️
-    # =========================================================
-
     INTENCIONES_PRINCIPALES = ["agendar", "consultar", "cancelar"]
 
-    # PRIORIDAD 1: ¿El usuario me dio el dato que le pedí?
-    # Comprobamos si el campo pendiente está en las entidades O
-    # si el NLP no detectó una nueva intención principal (es una respuesta como "carmen" o "si")
-    if campo_pendiente and (campo_pendiente in entidades_raw or not intencion_raw in INTENCIONES_PRINCIPALES):
+    # =========================================================
+    # ⭐️ INICIO DE LA LÓGICA DE PRIORIDADES (V5 - FINAL) ⭐️
+    # =========================================================
+
+    # PRIORIDAD 1: ¿Quiere el usuario cambiar de tema?
+    # (Arregla el "Estado Atascado" que viste en los logs)
+    if intencion_raw in INTENCIONES_PRINCIPALES and intencion_raw != intencion_actual:
+        print(f"FIX (Prioridad 1): CAMBIO DE INTENCIÓN CLARO. De '{intencion_actual}' a '{intencion_raw}'. Reiniciando.")
         
-        print(f"FIX (Prioridad 1): 'Sticky Intent'. El usuario está respondiendo. Manteniendo '{intencion_actual}'.")
-        intencion_raw = intencion_actual # Forzar la intención
+        # Guardar entidades que vinieron con el nuevo comando (ej. "consultar 12345678")
+        entidades_limpias = {k: v for k, v in entidades_raw.items() if v}
         
-        # Si el NLP no extrajo la entidad (ej. dijo "carmen"), coger el texto.
+        # Reset total del estado
+        estado_actual = {} 
+        
+        # Aplicar la nueva intención y sus entidades
+        estado_actual["intent"] = intencion_raw
+        estado_actual.update(entidades_limpias)
+
+        # Actualizar variables locales para el flujo de este turno
+        intencion_actual = intencion_raw
+        campo_pendiente = None # Ya no estamos esperando el campo anterior
+
+    # PRIORIDAD 2: Si no... ¿Me está respondiendo?
+    # (Arregla el bug del DNI de 9 dígitos y el "dra")
+    elif campo_pendiente:
+        print(f"FIX (Prioridad 2): 'Sticky Intent'. El usuario está respondiendo. Manteniendo '{intencion_actual}'.")
+        
+        # Forzar la intención actual, ignorando el NLP (ej. 'consultar' en un DNI)
+        intencion_raw = intencion_actual
+        
+        # Si el NLP no extrajo la entidad (ej. "0303030303" o "dra"),
+        # coger el texto entero del mensaje y ponerlo en el campo esperado.
+        # El validador (validar_formato) se encargará de rechazarlo si es inválido.
         if campo_pendiente not in entidades_raw:
             entidades_raw[campo_pendiente] = mensaje.strip()
         
+        # Limpiar el flag de "pregunta pendiente"
         if "campo_preguntado" in estado_actual:
             del estado_actual["campo_preguntado"]
 
-    # PRIORIDAD 2: El usuario NO me dio el dato. ¿Quiere cambiar de tema?
-    # (Esto arregla el Bug A: Atascado en Cancelar)
-    elif intencion_raw in INTENCIONES_PRINCIPALES and intencion_raw != intencion_actual:
-        print(f"FIX (Prioridad 2): CAMBIO DE INTENCIÓN CLARO. De '{intencion_actual}' a '{intencion_raw}'. Reiniciando.")
-        estado_actual = {} # Reinicio total
+    # PRIORIDAD 3: Es el primer turno o una continuación sin estado
+    elif not intencion_actual:
         estado_actual["intent"] = intencion_raw
-        entidades_limpias = {k: v for k, v in entidades_raw.items() if v}
-        estado_actual.update(entidades_limpias)
-        intencion_actual = intencion_raw # Actualizar la variable local
-
-    # PRIORIDAD 3: No es una respuesta, no es un cambio. Solo es... hablar (o un turno nuevo).
-    else:
-        # Mantener la intención actual si existe, si no, usar la del NLP.
-        if not estado_actual.get("intent"):
-            estado_actual["intent"] = intencion_raw
-            intencion_actual = intencion_raw # Actualizar la variable local
-    
+        intencion_actual = intencion_raw # Actualizar variable local
+        
     # =========================================================
-    # ⭐️ FIN DE LA LÓGICA DE PRIORIDADES ⭐️
+    # ⭐️ FIN DE LA LÓGICA DE PRIORIDADES (V5) ⭐️
     # =========================================================
 
     # 4. Establecer intención si es la primera vez (manejado arriba)
     if not estado_actual.get("intent"):
         estado_actual["intent"] = intencion_raw
 
-    # 5. Consolidar Entidades (Bug "Recabar Datos")
+    # 5. Consolidar Entidades
+    # (Poner las entidades del NLP en el estado, si no estaban ya validadas)
     entidades_limpias = {k: v for k, v in entidades_raw.items() if v}
-    # ⭐️ CORRECCIÓN: No sobrescribir entidades ya validadas
     for k, v in entidades_limpias.items():
-        if not estado_actual.get(f"{k}_validado"):
+        if not estado_actual.get(f"{k}_validado"): # No sobrescribir datos ya validados
             estado_actual[k] = v
     
     # 6. Lógica de Flujo por Intención
@@ -259,7 +268,6 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             
             # 1. ¿Falta el campo?
             if campo not in estado_actual:
-                # (Esto soluciona el Bug B: "Dato Fantasma", al pedir la hora si falta)
                 print(f"FIX (Bug 3): Campo '{campo}' falta. Pidiendo.")
                 respuesta += RESPUESTAS_PREGUNTAS[campo]
                 estado_actual["campo_preguntado"] = campo
@@ -273,6 +281,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             valor = estado_actual[campo]
             
             # --- Validar Formato (Bug E + Bug 2) ---
+            # Aquí es donde se rechaza el DNI "0303030303"
             valor, error_formato = validar_formato(campo, valor)
             if error_formato:
                 print(f"FIX (Bug E/4): Error de formato en {campo} ('{valor}').")
@@ -368,7 +377,6 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         
         # --- Pedir DNI si falta ---
         if not estado_actual.get("DNI_validado"):
-            # ⭐️ NOTA: Esta es la línea que ves en el log
             respuesta = "Necesito tu DNI para cancelar."
             estado_actual["campo_preguntado"] = "DNI"
         
@@ -412,8 +420,6 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             estado_actual["DNI_validado"] = True
         
         if not estado_actual.get("DNI_validado"):
-            # ⭐️ NOTA: Si tu NLP confunde "consultar" con "cancelar",
-            # el bot entra en el flujo "cancelar" y muestra el mensaje de ese flujo.
             respuesta = "Necesito tu DNI para consultar."
             estado_actual["campo_preguntado"] = "DNI"
         else:
