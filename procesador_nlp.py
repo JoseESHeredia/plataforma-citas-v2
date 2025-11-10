@@ -54,10 +54,12 @@ def detectar_intencion_modelo(texto):
     return intencion_predicha
 
 
-# --- Extractor de Entidades ---
+# --- Extractor de Entidades (CORREGIDO: Nomenclatura Mayúscula) ---
 def extraer_entidades(texto):
     """
-    Extrae entidades como DNI, Fecha y Médico (usa nlp_base).
+    Extrae entidades como DNI, Fecha, Hora y Medico.
+    Se asegura que las claves de las entidades sigan la convención (ej. 'Fecha', 'Hora') 
+    para ser usadas en el flujo de chatbot.
     """
     if not nlp_base:
         print("Advertencia: Modelo base no cargado. No se pueden extraer entidades.")
@@ -71,26 +73,25 @@ def extraer_entidades(texto):
         if ent.label_ == "PER":
             # Verificamos si la persona es un médico conocido
             if any(medico in ent.text for medico in ["Vega", "Perez", "Morales", "Castro", "Paredes"]):
-                entidades["medico"] = ent.text 
+                entidades["Medico"] = ent.text 
                 break
 
     # 2. Extracer DNI (Regex)
     match_dni = re.search(r'\b(\d{8})\b', texto)
     if match_dni:
-        # ⭐️⭐️⭐️ AQUÍ ESTÁ LA CORRECCIÓN ⭐️⭐️⭐️
-        entidades["DNI"] = match_dni.group(1) # Cambiado de 'dni' a 'DNI'
+        entidades["DNI"] = match_dni.group(1) 
 
     # 3. Extraer Fecha (Reglas simples)
     texto_lower = texto.lower()
     if "mañana" in texto_lower:
-        entidades["fecha"] = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        entidades["Fecha"] = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     elif "hoy" in texto_lower:
-        entidades["fecha"] = datetime.now().strftime("%Y-%m-%d")
+        entidades["Fecha"] = datetime.now().strftime("%Y-%m-%d")
     else:
         # Regex simple para AAAA-MM-DD
         match_fecha_iso = re.search(r'(\d{4}-\d{2}-\d{2})', texto)
         if match_fecha_iso:
-             entidades["fecha"] = match_fecha_iso.group(1)
+             entidades["Fecha"] = match_fecha_iso.group(1)
 
     # 4. Extraer Hora (Reglas simples)
     match_hora = re.search(r'(\d{1,2}:\d{2})\s*(am|pm)?', texto_lower)
@@ -98,7 +99,7 @@ def extraer_entidades(texto):
         hora_str = match_hora.group(1)
         partes = hora_str.split(':')
         if len(partes) == 2:
-             entidades["hora"] = f"{int(partes[0]):02d}:{int(partes[1]):02d}"
+             entidades["Hora"] = f"{int(partes[0]):02d}:{int(partes[1]):02d}"
     elif " a las " in texto_lower:
         partes = texto_lower.split(" a las ")
         if len(partes) > 1:
@@ -106,7 +107,7 @@ def extraer_entidades(texto):
             if hora_potencial.isdigit():
                  hora_num = int(hora_potencial)
                  if 0 <= hora_num <= 23: 
-                      entidades["hora"] = f"{hora_num:02d}:00"
+                      entidades["Hora"] = f"{hora_num:02d}:00"
 
 
     return entidades
