@@ -116,7 +116,7 @@ def encontrar_medico(texto_usuario, medicos_validos):
             return med_original 
     return None
 
-# ⭐️ NUEVA FUNCIÓN: Validar formato (Bug E)
+# ⭐️ NUEVA FUNCIÓN: Validar formato (Bug E + Bug 2)
 def validar_formato(campo, valor):
     # ⭐️ CORREGIDO (Bug 2): Solo validamos DNI y Teléfono. El nombre se acepta.
     if campo == "DNI":
@@ -183,6 +183,10 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     intencion_raw, entidades_raw = procesar_texto(mensaje)
     print(f"NLP RAW: Intención={intencion_raw}, Entidades={entidades_raw}")
 
+    # ⭐️ CORRECCIÓN (Bug 1): Si el estado está vacío, permite nueva intención
+    if not estado_actual:
+        intencion_actual = None
+
     if campo_pendiente:
         if intencion_raw != intencion_actual and intencion_raw in ["desconocido", "consultar", "saludo"]:
             print(f"FIX (Bug A): NLP se confundió (vio '{intencion_raw}'). Manteniendo intent '{intencion_actual}'.")
@@ -195,10 +199,6 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             del estado_actual["campo_preguntado"]
 
     # 3. Lógica de Cambio de Intención
-    # ⭐️ CORRECCIÓN (Bug 1): Si el estado está vacío, permite nueva intención
-    if not estado_actual:
-        intencion_actual = None
-        
     if intencion_actual and intencion_actual != intencion_raw and not campo_pendiente and intencion_raw not in ["saludo", "desconocido"]:
         print(f"CAMBIO DE INTENCIÓN: De '{intencion_actual}' a '{intencion_raw}'. Reiniciando.")
         estado_actual = {} 
@@ -225,6 +225,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         while nuevos_datos_procesados:
             nuevos_datos_procesados = False # Asumir que terminamos
             
+            # ⭐️ CORRECCIÓN (Bug 3): Revisar la lista completa de campos
             campos_a_validar = [c for c in CAMPOS_AGENDAR if c in estado_actual and not estado_actual.get(f"{c}_validado")]
             
             for campo in campos_a_validar:
@@ -236,10 +237,10 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 if error_formato:
                     print(f"FIX (Bug E): Error de formato en {campo} ('{valor}').")
                     respuesta = f"{error_formato} {RESPUESTAS_PREGUNTAS[campo]}"
-                    del estado_actual[campo]
+                    del estado_actual[campo] # Borra el dato inválido
                     estado_actual["campo_preguntado"] = campo
                     return respuesta, estado_actual
-                estado_actual[campo] = valor 
+                estado_actual[campo] = valor # Guardar valor limpio
 
                 # --- Validar Médico (Bug C) ---
                 if campo == "Medico":
@@ -261,6 +262,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                     if paciente:
                         print(f"FIX (Bug B): Paciente encontrado: {paciente['Nombre']}.")
                         estado_actual.update(paciente) 
+                        # Marcar los campos autocompletados como "validados"
                         estado_actual["Nombre_validado"] = True
                         estado_actual["Telefono_validado"] = True
                         estado_actual["Email_validado"] = True
@@ -301,7 +303,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             estado_actual["campo_preguntado"] = campo_a_pedir
 
     # =========================================================
-    # ➡️ FLUJO: CANCELAR (Bug H)
+    # ➡️ FLUJO: CANCELAR (Bug H + Bug E)
     # =========================================================
     elif estado_actual.get("intent") == "cancelar":
         print("Flujo CANCELAR.")
