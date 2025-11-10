@@ -16,7 +16,7 @@ RESPUESTAS_PREGUNTAS = {
     "Nombre": "¿Cuál es tu nombre completo?",
     "Telefono": "¿Me proporcionas un número de teléfono de 9 dígitos que empiece con 9?",
     "Email": "¿Me das tu email?",
-    "Medico": "Pregunta de Médico (será reemplazada)", # Se genera dinámicamente
+    "Medico": "Pregunta de Médico (será reemplazada)",
     "Fecha": "¿Qué fecha quieres la cita?",
     "Hora": "¿A qué hora? (Ej. 3pm o 15:00)"
 }
@@ -69,7 +69,7 @@ except ImportError as e:
 # --- Importaciones de Modelo ML ---
 try:
     import joblib
-    # [cite_start]Los archivos joblib están en los archivos de origen [cite: 4, 5, 1]
+    # Los archivos joblib están en los archivos de origen
     modelo_noshow = joblib.load("modelo_noshow.joblib") 
     preprocesador_noshow = joblib.load("preprocesador_noshow.joblib")
     print("✅ chatbot_logic: Modelo ML 'No-Show' cargado.")
@@ -153,9 +153,6 @@ def formato_hora_12h(hora_24h_str):
 # 🧠 FUNCIÓN PRINCIPAL DEL CHATBOT (CON ESTADO)
 # =========================================================
 def responder_chatbot(mensaje, historial_chat, estado_actual):
-    """
-    Función principal del chatbot con flujo conversacional mejorado.
-    """
     respuesta = ""
     if estado_actual is None: estado_actual = {}
     print(f"\n--- Turno Nuevo ---")
@@ -174,7 +171,6 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     elif intencion_pendiente == "cancelar":
         RESPUESTAS_PREGUNTAS["DNI"] = "¿Cuál es tu número de DNI para **cancelar la cita**?"
     else:
-        # Volver al texto base si no hay una intención clara
         RESPUESTAS_PREGUNTAS["DNI"] = "¿Cuál es tu número de DNI?"
 
 
@@ -236,17 +232,16 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         estado_actual["intent"] = intencion_raw
         estado_actual.update(entidades_limpias)
         
-        # El flujo continuará abajo con el nuevo intent y estado limpio.
-
-    # PRIORIDAD 2: Si no... ¿Me está respondiendo? 
+    # PRIORIDAD 2: Si no... ¿Me está respondiendo? (FIX DE BUCLE)
     elif campo_pendiente:
         print(f"FIX (P2): 'Sticky Intent'. El usuario está respondiendo. Manteniendo '{intencion_actual}'.")
         
-        if intencion_actual == "agendar" and campo_pendiente == "DNI":
-             intencion_raw = "agendar"
-        else:
+        # ⭐️ FIX DE STICKY INTENT: Si el campo estaba pendiente, mantiene la intención original 
+        # a menos que el usuario haya iniciado explícitamente un cambio de flujo claro.
+        if intencion_raw not in INTENCIONES_PRINCIPALES or intencion_raw == intencion_actual:
              intencion_raw = intencion_actual 
         
+        # Si la respuesta no tenía entidad, tomamos el mensaje completo para el campo
         if campo_pendiente not in entidades_raw:
             entidades_raw[campo_pendiente] = mensaje.strip()
         
@@ -376,7 +371,6 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         paciente_tipo = "Existente" if buscar_paciente_por_dni(estado_actual["DNI"]) else "Nuevo"
         especialidad = asignar_especialidad(estado_actual["Medico"])
         
-        # ⭐️ Nuevo formato visual solicitado:
         formato_hora_12h_str = formato_hora_12h(estado_actual['Hora'])
         
         respuesta = (
@@ -501,15 +495,13 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                         respuesta += f"* Cita **{c.get('ID_Cita','N/A')}** el **{c.get('Fecha','N/A')}** a las {c.get('Hora','N/A')} (Estado: {c.get('Estado','N/A')})\n"
             else: 
                 respuesta = str(res_crud) 
-            estado_actual = {} # Resetear estado al finalizar
+            estado_actual = {} 
 
     elif estado_actual.get("intent") == "desconocido":
-        print("Flujo DESCONOCIDO.")
         respuesta = "No entendí. Intenta: agendar, consultar o cancelar."
         estado_actual = {} 
 
     elif not respuesta:
-        print("Flujo ERROR INTERNO.")
         respuesta = "Disculpa, tengo un problema interno o necesito más información. Por favor, reinicia el chat diciendo qué quieres hacer (agendar, consultar o cancelar)."
         estado_actual = {} 
 
