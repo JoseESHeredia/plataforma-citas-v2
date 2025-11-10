@@ -191,8 +191,17 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     # ⭐️ LÓGICA DE PRIORIDADES ⭐️
     # =========================================================
 
+    # FIX CRÍTICO (Protección 1): Bandera para proteger el flujo de agendar.
+    # No permitimos cambiar la intención si estamos en agendar Y esperando DNI.
+    proteccion_agendar = (
+        intencion_actual == "agendar" and campo_pendiente == "DNI"
+    )
+
     # PRIORIDAD 1: ¿Quiere el usuario cambiar de tema? (Reset incondicional)
-    if intencion_raw in INTENCIONES_PRINCIPALES and intencion_raw != intencion_actual:
+    if (intencion_raw in INTENCIONES_PRINCIPALES 
+        and intencion_raw != intencion_actual 
+        and not proteccion_agendar): # <-- FIX APLICADO AQUÍ
+        
         print(f"FIX (P1): CAMBIO DE INTENCIÓN CLARO. De '{intencion_actual}' a '{intencion_raw}'. RESETEANDO ESTADO.")
         
         entidades_limpias = {k: v for k, v in entidades_raw.items() if v}
@@ -210,8 +219,8 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     elif campo_pendiente:
         print(f"FIX (P2): 'Sticky Intent'. El usuario está respondiendo. Manteniendo '{intencion_actual}'.")
         
-        # Si estamos en el flujo AGENDAR y nos responden el DNI, forzamos el intent a AGENDAR.
-        # Esto soluciona el problema de que el NLP detecte "consultar" al ver 8 dígitos.
+        # FIX CRÍTICO (Protección 2): Si estamos en el flujo AGENDAR y nos responden el DNI, 
+        # forzamos el intent a AGENDAR, sin importar lo que haya clasificado el NLP.
         if intencion_actual == "agendar" and campo_pendiente == "DNI":
              intencion_raw = "agendar"
         else:
