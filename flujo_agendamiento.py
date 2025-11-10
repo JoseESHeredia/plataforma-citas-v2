@@ -67,7 +67,7 @@ def generar_id(prefijo, hoja):
     return f"{prefijo}{max_num + 1:03d}"
 
 
-# ===== Lógica de negocio (Médicos) - Sin cambios =====
+# ===== Lógica de negocio (Médicos) - CON FIX de .strip() =====
 def asignar_especialidad(medico):
     especialidades = {
         "Dr.Vega": "Endodoncia",
@@ -76,8 +76,8 @@ def asignar_especialidad(medico):
         "Dr.Castro": "Protesis dental",
         "Dra.Paredes": "Cirugia Oral"
     }
-    # ESTA LÍNEA ERA EL BUG D
-    return especialidades.get(medico) 
+    # ⭐️ FIX: Agregamos .strip() para limpiar cualquier espacio en blanco
+    return especialidades.get(medico.strip() if isinstance(medico, str) else medico) 
 
 def obtener_medicos():
     especialidades = {

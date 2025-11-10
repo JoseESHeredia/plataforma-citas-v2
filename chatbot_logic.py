@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import date
+from datetime import date, datetime 
 import re
 import numpy as np 
 import unicodedata 
@@ -12,7 +12,7 @@ import dateparser
 CAMPOS_AGENDAR = ["DNI", "Nombre", "Telefono", "Email", "Medico", "Fecha", "Hora"]
 CAMPOS_PACIENTE = ["DNI", "Nombre", "Telefono", "Email"]
 RESPUESTAS_PREGUNTAS = {
-    "DNI": "¿Cuál es tu número de DNI?",
+    "DNI": "¿Cuál es tu número de DNI?", 
     "Nombre": "¿Cuál es tu nombre completo?",
     "Telefono": "¿Me proporcionas un número de teléfono de 9 dígitos que empiece con 9?",
     "Email": "¿Me das tu email?",
@@ -53,6 +53,7 @@ except ImportError as e:
     def cancelar_cita(dni, fecha): return "Error: Lógica de cancelación no encontrada."
     def obtener_medicos(): return ["Error"]
     def buscar_paciente_por_dni(dni): return None
+    def asignar_especialidad(m): return "Error"
     LISTA_MEDICOS_TEXTO = "Error al cargar médicos."
     MEDICOS_VALIDOS = []
 
@@ -68,6 +69,7 @@ except ImportError as e:
 # --- Importaciones de Modelo ML ---
 try:
     import joblib
+    # [cite_start]Los archivos joblib están en los archivos de origen [cite: 4, 5, 1]
     modelo_noshow = joblib.load("modelo_noshow.joblib") 
     preprocesador_noshow = joblib.load("preprocesador_noshow.joblib")
     print("✅ chatbot_logic: Modelo ML 'No-Show' cargado.")
@@ -137,6 +139,15 @@ def validar_formato(campo, valor):
 
     return str(valor), None
 
+def formato_hora_12h(hora_24h_str):
+    """Convierte 'HH:MM' a 'HH:MM AM/PM'."""
+    try:
+        # Crea un objeto datetime a partir de la hora (se asume una fecha cualquiera)
+        hora_obj = datetime.strptime(hora_24h_str, "%H:%M")
+        return hora_obj.strftime("%I:%M %p").replace('AM', 'a.m.').replace('PM', 'p.m.')
+    except ValueError:
+        return hora_24h_str
+
 
 # =========================================================
 # 🧠 FUNCIÓN PRINCIPAL DEL CHATBOT (CON ESTADO)
@@ -153,6 +164,19 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
 
     if not nlp_cargado or not flujo_cargado: 
         return "Error: Los módulos de NLP o Flujo no están disponibles.", {}
+    
+    # ⭐️ MEJORA: Adaptar la pregunta de DNI al contexto
+    intencion_pendiente = estado_actual.get("intent", "")
+    if intencion_pendiente == "agendar":
+        RESPUESTAS_PREGUNTAS["DNI"] = "¿Cuál es tu número de DNI para **agendar la cita**?"
+    elif intencion_pendiente == "consultar":
+        RESPUESTAS_PREGUNTAS["DNI"] = "¿Cuál es tu número de DNI para **consultar tus citas**?"
+    elif intencion_pendiente == "cancelar":
+        RESPUESTAS_PREGUNTAS["DNI"] = "¿Cuál es tu número de DNI para **cancelar la cita**?"
+    else:
+        # Volver al texto base si no hay una intención clara
+        RESPUESTAS_PREGUNTAS["DNI"] = "¿Cuál es tu número de DNI?"
+
 
     # 1. Procesar respuesta a confirmación
     if estado_actual.get("confirmando_agendar"):
@@ -192,7 +216,6 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     # =========================================================
 
     # FIX CRÍTICO (Protección 1): Bandera para proteger el flujo de agendar.
-    # No permitimos cambiar la intención si estamos en agendar Y esperando DNI.
     proteccion_agendar = (
         intencion_actual == "agendar" and campo_pendiente == "DNI"
     )
@@ -200,7 +223,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     # PRIORIDAD 1: ¿Quiere el usuario cambiar de tema? (Reset incondicional)
     if (intencion_raw in INTENCIONES_PRINCIPALES 
         and intencion_raw != intencion_actual 
-        and not proteccion_agendar): # <-- FIX APLICADO AQUÍ
+        and not proteccion_agendar):
         
         print(f"FIX (P1): CAMBIO DE INTENCIÓN CLARO. De '{intencion_actual}' a '{intencion_raw}'. RESETEANDO ESTADO.")
         
@@ -215,12 +238,10 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         
         # El flujo continuará abajo con el nuevo intent y estado limpio.
 
-    # PRIORIDAD 2: Si no... ¿Me está respondiendo? (FIX CRÍTICO)
+    # PRIORIDAD 2: Si no... ¿Me está respondiendo? 
     elif campo_pendiente:
         print(f"FIX (P2): 'Sticky Intent'. El usuario está respondiendo. Manteniendo '{intencion_actual}'.")
         
-        # FIX CRÍTICO (Protección 2): Si estamos en el flujo AGENDAR y nos responden el DNI, 
-        # forzamos el intent a AGENDAR, sin importar lo que haya clasificado el NLP.
         if intencion_actual == "agendar" and campo_pendiente == "DNI":
              intencion_raw = "agendar"
         else:
@@ -266,7 +287,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 respuesta = f"{error_formato} {RESPUESTAS_PREGUNTAS['DNI']}"
                 del estado_actual["DNI"]
                 estado_actual["campo_preguntado"] = "DNI"
-                return respuesta, estado_actual
+                return respuesta, estado_actual # <-- FINALIZA AQUÍ SOLO POR ERROR
             
             estado_actual["DNI"] = valor_limpio
             paciente = buscar_paciente_por_dni(valor_limpio)
@@ -286,13 +307,23 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 respuesta = "Eres un paciente nuevo. Necesitaré unos datos más. "
                 siguiente_campo = "Nombre"
             
-            respuesta += RESPUESTAS_PREGUNTAS[siguiente_campo]
-            estado_actual["campo_preguntado"] = siguiente_campo
-            return respuesta, estado_actual # FINALIZA TURNO AQUÍ
+            # ⭐️ FIX CRÍTICO: Si el siguiente campo ya está en la entidad raw o estado 
+            # (es decir, el usuario lo pasó en la misma frase), NO preguntamos y dejamos que el 
+            # bucle principal lo procese inmediatamente en este mismo turno.
+            if siguiente_campo not in entidades_raw and siguiente_campo not in estado_actual:
+                respuesta += RESPUESTAS_PREGUNTAS[siguiente_campo]
+                estado_actual["campo_preguntado"] = siguiente_campo
+                return respuesta, estado_actual # <-- FINALIZA AQUÍ solo si se preguntó
 
         # --- 2. Bucle para el resto de los campos (Avance secuencial y validación) ---
         for campo in CAMPOS_AGENDAR:
             
+            # ⭐️ CORRECCIÓN CLAVE: Si DNI es el campo actual y no está validado, lo pedimos.
+            if campo == "DNI" and not estado_actual.get("DNI_validado"):
+                respuesta = RESPUESTAS_PREGUNTAS["DNI"]
+                estado_actual["campo_preguntado"] = "DNI"
+                return respuesta, estado_actual
+
             if estado_actual.get(f"{campo}_validado"):
                 continue
 
@@ -340,19 +371,24 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             except IndexError:
                 pass 
 
-        # --- Resumen de Confirmación ---
+        # --- Resumen de Confirmación (NUEVO FORMATO VISUAL) ---
         print("Todos los campos listos. Mostrando resumen.")
         paciente_tipo = "Existente" if buscar_paciente_por_dni(estado_actual["DNI"]) else "Nuevo"
         especialidad = asignar_especialidad(estado_actual["Medico"])
         
+        # ⭐️ Nuevo formato visual solicitado:
+        formato_hora_12h_str = formato_hora_12h(estado_actual['Hora'])
+        
         respuesta = (
-            f"¡Perfecto! Por favor, confirma tus datos:\n\n"
+            f"¡Muy bien! Por favor, **confirma los datos finales de tu cita** a continuación:\n\n"
             f"**Paciente:** {estado_actual['Nombre']} ({paciente_tipo})\n"
             f"**DNI:** {estado_actual['DNI']}\n"
             f"**Teléfono:** {estado_actual['Telefono']}\n"
+            f"**Email:** {estado_actual['Email']}\n"
             f"**Médico:** {estado_actual['Medico']} ({especialidad})\n"
-            f"**Cita:** {estado_actual['Fecha']} a las {estado_actual['Hora']}\n\n"
-            "¿Es todo correcto? (Responde 'Sí' o 'No')"
+            f"**Cita:** {estado_actual['Fecha']} **Hora:** {estado_actual['Hora']} ({formato_hora_12h_str})\n"
+            f"**Riesgo No-Show (simulado):** {predecir_noshow(estado_actual['Fecha'], estado_actual['Hora']):.0% if predecir_noshow(estado_actual['Fecha'], estado_actual['Hora']) is not None else 'N/A'}\n\n"
+            f"**¿Es todo correcto? (Responde 'Sí' o 'No')**"
         )
         estado_actual["confirmando_agendar"] = True
         return respuesta, estado_actual
@@ -364,14 +400,15 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     elif estado_actual.get("intent") == "cancelar":
         print("Flujo CANCELAR.")
 
-        # --- Flujo de confirmación de ID de cita ---
+        # --- Flujo de confirmación de ID de cita (con FIX de usabilidad) ---
         if estado_actual.get("campo_preguntado") == "cancelar_id":
             citas_pendientes = estado_actual.get("citas_pendientes", [])
             dni_a_usar = estado_actual.get("DNI")
 
             cita_a_cancelar = None
             for c in citas_pendientes:
-                if mensaje.strip().lower() in c['ID_Cita'].lower() or mensaje.strip() in c['Fecha']:
+                # Lógica de cancelación DUAL: por ID o por FECHA
+                if mensaje.strip().lower() in c['ID_Cita'].lower() or mensaje.strip() == c['Fecha']:
                     cita_a_cancelar = c
                     break
             
@@ -379,7 +416,15 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 respuesta = cancelar_cita(dni_a_usar, cita_a_cancelar['Fecha'])
                 estado_actual = {} # Resetear estado al finalizar
             else:
-                respuesta = "No entendí esa selección. Por favor, dime la **fecha exacta (AAAA-MM-DD)** o el **ID de la cita (ej. C022)** de la lista de arriba."
+                # ⭐️ FIX DE USABILIDAD: Mostrar la lista de citas nuevamente
+                lista_citas_texto = "\n".join([
+                    f"* Cita **{c.get('ID_Cita','N/A')}** el **{c.get('Fecha','N/A')}** a las {c.get('Hora','N/A')} (con {c.get('Medico','N/A')})"
+                    for c in citas_pendientes
+                ])
+                respuesta = (
+                    f"No entendí esa selección. Por favor, dime la **fecha exacta (AAAA-MM-DD)** "
+                    f"o el **ID de la cita (ej. C050)** de la siguiente lista:\n{lista_citas_texto}"
+                )
                 estado_actual["campo_preguntado"] = "cancelar_id" # Volver a preguntar
             return respuesta, estado_actual
 
@@ -396,7 +441,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
         
         # --- Pedir DNI si falta ---
         if not estado_actual.get("DNI_validado"):
-            respuesta = "Necesito tu DNI para cancelar."
+            respuesta = RESPUESTAS_PREGUNTAS["DNI"]
             estado_actual["campo_preguntado"] = "DNI"
         
         # --- Mostrar lista de citas ---
@@ -408,6 +453,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 estado_actual = {} # Resetear estado
                 return res_crud, estado_actual 
             
+            # Solo mostramos citas pendientes para CANCELAR
             pendientes = [c for c in res_crud if c.get('Estado').lower() == "pendiente"]
             
             if not pendientes:
@@ -442,7 +488,7 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
             estado_actual["DNI_validado"] = True
         
         if not estado_actual.get("DNI_validado"):
-            respuesta = "Necesito tu DNI para consultar."
+            respuesta = RESPUESTAS_PREGUNTAS["DNI"]
             estado_actual["campo_preguntado"] = "DNI"
         else:
             res_crud = consultar_citas(estado_actual["DNI"])
