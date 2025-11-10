@@ -64,29 +64,33 @@ def extraer_entidades(texto):
         if ent.label_ == "PER":
             # Verificamos si la persona es un médico conocido
             if any(medico in ent.text for medico in ["Vega", "Perez", "Morales", "Castro", "Paredes"]):
-                entidades["Medico"] = ent.text # ⭐️ CAMBIO a Mayúscula
+                entidades["Medico"] = ent.text 
                 break
 
     # 2. Extracer DNI (Regex)
     match_dni = re.search(r'\b(\d{8})\b', texto)
     if match_dni:
-        entidades["DNI"] = match_dni.group(1) # ⭐️ CAMBIO a Mayúscula
+        entidades["DNI"] = match_dni.group(1) 
 
-    # 3. Extraer Fecha (Usando Dateparser) - ⭐️ MEJORA SPRINT 3
+    # 3. Extraer Fecha (Usando Dateparser) - ⭐️ CORREGIDO (Bug 4)
     # Configuraciones para entender "mañana", "próximo martes", "10-11-2025"
+    # ⭐️ AÑADIDO 'languages' para entender "pasado mañana"
     settings = {'PREFER_DATES_FROM': 'future', 'DATE_ORDER': 'DMY'}
+    
     # Quitamos las palabras de hora para que dateparser no se confunda
     texto_sin_hora = re.sub(r'(\d{1,2})\s*(?::(\d{2}))?\s*(am|pm)?', '', texto_lower)
     texto_sin_hora = re.sub(r'a las \d+', '', texto_sin_hora)
 
-    fecha_obj = dateparser.parse(texto_sin_hora, settings=settings)
+    # ⭐️ AÑADIDO languages=['es']
+    fecha_obj = dateparser.parse(texto_sin_hora, languages=['es'], settings=settings) 
+    
     if fecha_obj:
-        entidades["Fecha"] = fecha_obj.strftime("%Y-%m-%d") # ⭐️ CAMBIO a Mayúscula
+        entidades["Fecha"] = fecha_obj.strftime("%Y-%m-%d")
     else:
         # Regex simple para AAAA-MM-DD (fallback)
         match_fecha_iso = re.search(r'(\d{4}-\d{2}-\d{2})', texto)
         if match_fecha_iso:
-             entidades["Fecha"] = match_fecha_iso.group(1) # ⭐️ CAMBIO a Mayúscula
+             entidades["Fecha"] = match_fecha_iso.group(1)
 
     # 4. Extraer Hora (Reglas simples) - ⭐️ CORREGIDO (Bug G)
     # Busca formatos como "14:30", "2pm", "3 pm", "a las 15"
@@ -109,7 +113,7 @@ def extraer_entidades(texto):
                 hora_num = 0
 
             if 0 <= hora_num <= 23 and 0 <= min_num <= 59:
-                entidades["Hora"] = f"{hora_num:02d}:{min_num:02d}" # ⭐️ CAMBIO a Mayúscula
+                entidades["Hora"] = f"{hora_num:02d}:{min_num:02d}" 
                 
         except ValueError:
             pass # Ignorar si no es un número válido
@@ -122,7 +126,7 @@ def extraer_entidades(texto):
             if hora_potencial.isdigit():
                  hora_num = int(hora_potencial)
                  if 0 <= hora_num <= 23: 
-                      entidades["Hora"] = f"{hora_num:02d}:00" # ⭐️ CAMBIO a Mayúscula
+                      entidades["Hora"] = f"{hora_num:02d}:00" 
 
     return entidades
 
