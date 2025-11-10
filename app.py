@@ -12,23 +12,26 @@ import scipy.io.wavfile as wavfile
 from datetime import date
 import os 
 import re 
-from TTS.api import TTS # ⭐️ CAMBIO S4-01: Nueva importación
+from TTS.api import TTS 
+
+# ⭐️ NUEVAS IMPORTACIONES PARA S4-02 ⭐️
+import qrcode
+import io
+# ------------------------------------
 
 # ============================================================
 # ⭐️ CAMBIO S4-01: Inicializar el modelo TTS (Coqui)
 # ============================================================
-# Esto puede tardar la primera vez que se ejecuta mientras descarga el modelo.
 try:
     print("Cargando modelo TTS (Coqui)...")
-    # Este es un modelo en español rápido y de calidad decente:
     tts_model = TTS(model_name="tts_models/es/css10/vits", progress_bar=True, gpu=False)
     tts_cargado = True
     print("✅ Modelo TTS cargado.")
 except Exception as e:
-    # Si falla (ej. en una máquina sin internet), la app seguirá funcionando sin voz.
     print(f"❌ ADVERTENCIA: No se pudo cargar el modelo TTS: {e}")
     tts_model = None
     tts_cargado = False
+
 
 # ============================================================
 # 🔧 Importaciones de Lógica
@@ -84,6 +87,48 @@ except ImportError:
 
     def transcribir_audio_placeholder(audio): return "[Transcripción no disponible]"
     transcribir_audio = transcribir_audio_placeholder
+
+
+# ============================================================
+# ⭐️ NUEVA LÓGICA S4-02: Generación de QR de WhatsApp
+# ============================================================
+def generar_qr_whatsapp(dni, fecha, hora):
+    """
+    Genera un código QR que enlaza a un chat de WhatsApp con un mensaje prellenado.
+    Devuelve la ruta al archivo temporal de la imagen QR.
+    """
+    if not dni or not fecha or not hora:
+        return None, "Error: DNI, Fecha y Hora son requeridos para generar el QR."
+
+    # 📞 Número de ejemplo para el asistente (debe ser un número real con código de país)
+    NUMERO_ASISTENTE = "51999888777" # Ejemplo Perú +51999888777
+
+    # Mensaje prellenado para la confirmación
+    mensaje = f"Hola, confirmo mi cita para el DNI {dni} el día {fecha} a las {hora}. ¡Gracias!"
+    
+    # 🔗 Generar URL de WhatsApp
+    wa_url = f"https://wa.me/{NUMERO_ASISTENTE}?text={mensaje.replace(' ', '%20').replace('¡', '')}"
+
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(wa_url)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Guardar la imagen en un archivo temporal para que Gradio pueda mostrarla
+        temp_qr_path = os.path.join(tempfile.gettempdir(), f"qr_{dni}_{fecha}.png")
+        img.save(temp_qr_path)
+        
+        return temp_qr_path, f"QR generado con éxito. Escanea para confirmar la cita: {fecha} a las {hora}."
+
+    except Exception as e:
+        return None, f"❌ Error al generar el QR: {e}"
 
 
 # ============================================================
@@ -143,33 +188,11 @@ def consultar_citas_gradio(dni):
     return str(resultado)
 
 
-def transcribir_y_responder(audio_path, historial_chat_actual, estado_actual):
-    # Esta función es la antigua de "Voz". La mantenemos por si se usa en otro lado.
-    # La nueva lógica de audio está en "procesar_audio_a_textbox"
-    print(f"🎙️ Recibido audio: {audio_path}")
-    if audio_path is None:
-        return "[No audio]", "[Esperando]", estado_actual or {}
-
-    texto_transcrito = transcribir_audio(audio_path)
-    print(f"📝 Texto: {texto_transcrito}")
-
-    if texto_transcrito.startswith("❌") or texto_transcrito.startswith("⚠️"):
-        return texto_transcrito, f"Error: {texto_transcrito}", estado_actual or {}
-
-    if chatbot_cargado:
-        resp_bot, n_estado = responder_chatbot(texto_transcrito, historial_chat_actual, estado_actual)
-    else:
-        resp_bot, n_estado = "Error: Chatbot no cargado.", estado_actual or {}
-
-    return texto_transcrito, resp_bot, n_estado
-
-# ⭐️ CAMBIO S4-01: Nueva función para generar el audio
 def generar_audio_respuesta(texto_respuesta):
     """Genera un archivo WAV a partir del texto usando TTS."""
     if not tts_cargado or not texto_respuesta or texto_respuesta.startswith("❌"):
-        return None # No generar audio si no hay TTS o si es un error
+        return None 
     try:
-        # Usamos un archivo temporal para la respuesta
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio_file:
             tts_model.tts_to_file(text=texto_respuesta, file_path=temp_audio_file.name)
             print(f"🔊 Audio de respuesta generado en: {temp_audio_file.name}")
@@ -177,7 +200,6 @@ def generar_audio_respuesta(texto_respuesta):
     except Exception as e:
         print(f"❌ Error al generar audio TTS: {e}")
         return None
-
 
 # ============================================================
 # 🧠 Interfaz Gradio
@@ -196,7 +218,6 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
 
         chatbot = gr.Chatbot(label="Asistente Virtual", height=400, bubble_full_width=False)
         
-        # ⭐️ CAMBIO S4-01: Componente de audio para la respuesta
         audio_respuesta = gr.Audio(label="Respuesta de Voz", autoplay=True, visible=True, type="filepath")
 
         with gr.Column():
@@ -225,7 +246,6 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
 
         # --- Funciones internas ---
         def manejar_texto(mensaje, historial, estado):
-            # Limpiar el audio anterior
             audio_gen = None 
             
             if not mensaje:
@@ -236,10 +256,8 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
                 audio_gen = None
             else:
                 respuesta, nuevo_estado = responder_chatbot(mensaje, historial, estado)
-                # ⭐️ CAMBIO S4-01: Generar audio de la respuesta
                 audio_gen = generar_audio_respuesta(respuesta) 
 
-            # ⭐️ CAMBIO S4-01: Devolver el audio generado
             return historial + [[mensaje, respuesta]], nuevo_estado, gr.update(value=""), audio_gen
 
         def procesar_audio_a_textbox(audio_array):
@@ -274,12 +292,34 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
         # --- Conexiones ---
         btn_procesar_audio.click(fn=procesar_audio_a_textbox, inputs=[audio_input], outputs=[entrada_texto])
         
-        # ⭐️ CAMBIO S4-01: Añadir 'audio_respuesta' a las salidas
         btn_enviar_texto.click(fn=manejar_texto, inputs=[entrada_texto, chatbot, estado_conversacion],
                                outputs=[chatbot, estado_conversacion, entrada_texto, audio_respuesta])
         entrada_texto.submit(fn=manejar_texto, inputs=[entrada_texto, chatbot, estado_conversacion],
                              outputs=[chatbot, estado_conversacion, entrada_texto, audio_respuesta])
    
+    # --------------------------------------------------------
+    # 📱 NUEVA PESTAÑA S4-02: QR de Confirmación
+    # --------------------------------------------------------
+    with gr.Tab("QR de Confirmación"):
+        gr.Markdown("### 📱 Generar QR para confirmar cita por WhatsApp")
+        gr.Markdown("Ingresa los datos de la cita agendada para generar el código.")
+
+        with gr.Row():
+            txt_dni_qr = gr.Textbox(label="DNI del Paciente", placeholder="Ej: 12345678")
+            txt_fecha_qr = gr.Textbox(label="Fecha de la Cita", placeholder="AAAA-MM-DD")
+            txt_hora_qr = gr.Textbox(label="Hora de la Cita", placeholder="HH:MM")
+        
+        btn_generar_qr = gr.Button("Generar QR", variant="primary")
+        
+        qr_output_img = gr.Image(label="Código QR (Escanea para confirmar)", type="filepath")
+        qr_output_msg = gr.Label(label="Mensaje de Estado")
+
+        btn_generar_qr.click(
+            fn=generar_qr_whatsapp,
+            inputs=[txt_dni_qr, txt_fecha_qr, txt_hora_qr],
+            outputs=[qr_output_img, qr_output_msg]
+        )
+
 
     # --------------------------------------------------------
     # 📋 PESTAÑA 3: Datos (Google Sheets)
@@ -360,5 +400,4 @@ with gr.Blocks(theme=gr.themes.Soft(), title="Plataforma de Citas v2") as demo:
 # ============================================================
 
 if __name__ == "__main__":
-    # ⭐️ CAMBIO CRÍTICO: Usando tu código de despliegue de HF
     demo.queue().launch(server_name="0.0.0.0", server_port=7860)

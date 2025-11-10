@@ -1,31 +1,35 @@
-# --- Sprint 1 ---
-gradio<4.0.0
-huggingface-hub<1.0
-pandas<2.0
+# =======================================================
+# Sprint 1: Fundaciones y Bot Base
+# =======================================================
+gradio
+pandas
 python-dotenv
 faster-whisper
 Pillow<12.0
 
-# --- Sprint 2 ---
+# =======================================================
+# Sprint 2: NLP y Conexión a GSheets
+# =======================================================
 gspread
 oauth2client
-spacy>=3.7.0
+spacy
 es-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.7.0/es_core_news_sm-3.7.0.tar.gz
+dateparser
 
-# --- Sprint 3 ---
+# =======================================================
+# Sprint 3: Modelo No-Show
+# =======================================================
 scikit-learn
 numpy<2.0.0
 joblib
 
-# --- Sprint 4 ---
-# INICIO DE LA CORRECCIÓN (S4-01): Forzar PyTorch (CPU) para TTS
-# Esto arregla el 'OSError' en Windows y asegura la compatibilidad con HF Spaces.
+# =======================================================
+# Sprint 4: Voz (TTS) y QR
+# =======================================================
+# TTS (Coqui) - IMPORTANTE: Debe instalarse con esta configuración para CPU
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchaudio
-# FIN DE LA CORRECCIÓN
-
 TTS
-
-# Nueva dependencia del procesador_nlp.py 
-dateparser
+# QR para WhatsApp
+qrcode[pil]
