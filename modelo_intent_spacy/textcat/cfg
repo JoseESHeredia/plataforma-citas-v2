@@ -1,9 +1,0 @@
-{
-  "labels":[
-    "agendar",
-    "consultar",
-    "cancelar"
-  ],
-  "threshold":0.0,
-  "positive_label":null
-}
