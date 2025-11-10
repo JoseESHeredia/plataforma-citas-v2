@@ -36,13 +36,11 @@ try:
     )
     flujo_cargado = True
     
-    # Creamos la lista formateada de médicos y sus especialidades
     LISTA_MEDICOS_TEXTO = "\nNuestros especialistas disponibles son:\n"
     MEDICOS_VALIDOS = obtener_medicos()
     for med in MEDICOS_VALIDOS:
         LISTA_MEDICOS_TEXTO += f"* {med} ({asignar_especialidad(med)})\n"
     
-    # Actualizamos la pregunta de Médico
     RESPUESTAS_PREGUNTAS["Medico"] = f"¿Con qué especialista deseas agendar? {LISTA_MEDICOS_TEXTO}"
 
 except ImportError as e:
@@ -69,7 +67,6 @@ except ImportError as e:
 # --- Importaciones de Modelo ML ---
 try:
     import joblib
-    # Los archivos joblib están en los archivos de origen
     modelo_noshow = joblib.load("modelo_noshow.joblib") 
     preprocesador_noshow = joblib.load("preprocesador_noshow.joblib")
     print("✅ chatbot_logic: Modelo ML 'No-Show' cargado.")
@@ -142,7 +139,6 @@ def validar_formato(campo, valor):
 def formato_hora_12h(hora_24h_str):
     """Convierte 'HH:MM' a 'HH:MM AM/PM'."""
     try:
-        # Crea un objeto datetime a partir de la hora (se asume una fecha cualquiera)
         hora_obj = datetime.strptime(hora_24h_str, "%H:%M")
         return hora_obj.strftime("%I:%M %p").replace('AM', 'a.m.').replace('PM', 'p.m.')
     except ValueError:
@@ -236,10 +232,9 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
     elif campo_pendiente:
         print(f"FIX (P2): 'Sticky Intent'. El usuario está respondiendo. Manteniendo '{intencion_actual}'.")
         
-        # ⭐️ FIX DE STICKY INTENT: Si el campo estaba pendiente, mantiene la intención original 
-        # a menos que el usuario haya iniciado explícitamente un cambio de flujo claro.
-        if intencion_raw not in INTENCIONES_PRINCIPALES or intencion_raw == intencion_actual:
-             intencion_raw = intencion_actual 
+        # ⭐️ FIX DEFINITIVO: Si hay un campo pendiente, NO PERMITIMOS que la intención cambie, 
+        # sin importar lo que el NLP haya clasificado (a menos que el usuario reinicie).
+        intencion_raw = intencion_actual 
         
         # Si la respuesta no tenía entidad, tomamos el mensaje completo para el campo
         if campo_pendiente not in entidades_raw:
@@ -302,18 +297,14 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 respuesta = "Eres un paciente nuevo. Necesitaré unos datos más. "
                 siguiente_campo = "Nombre"
             
-            # ⭐️ FIX CRÍTICO: Si el siguiente campo ya está en la entidad raw o estado 
-            # (es decir, el usuario lo pasó en la misma frase), NO preguntamos y dejamos que el 
-            # bucle principal lo procese inmediatamente en este mismo turno.
             if siguiente_campo not in entidades_raw and siguiente_campo not in estado_actual:
                 respuesta += RESPUESTAS_PREGUNTAS[siguiente_campo]
                 estado_actual["campo_preguntado"] = siguiente_campo
-                return respuesta, estado_actual # <-- FINALIZA AQUÍ solo si se preguntó
+                return respuesta, estado_actual 
 
         # --- 2. Bucle para el resto de los campos (Avance secuencial y validación) ---
         for campo in CAMPOS_AGENDAR:
             
-            # ⭐️ CORRECCIÓN CLAVE: Si DNI es el campo actual y no está validado, lo pedimos.
             if campo == "DNI" and not estado_actual.get("DNI_validado"):
                 respuesta = RESPUESTAS_PREGUNTAS["DNI"]
                 estado_actual["campo_preguntado"] = "DNI"
@@ -327,7 +318,6 @@ def responder_chatbot(mensaje, historial_chat, estado_actual):
                 estado_actual["campo_preguntado"] = campo
                 return respuesta, estado_actual
             
-            # 4. El campo existe pero no está validado. Validar AHORA.
             valor = estado_actual[campo]
             
             # --- Validar Formato ---
